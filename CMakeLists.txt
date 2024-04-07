@@ -222,6 +222,9 @@ if(CLIENT)
 
 	message(STATUS "Adding desktop")
 	add_subdirectory(src/desktop)
+
+	message(STATUS "Adding headless-client")
+	add_subdirectory(src/headless-client)
 endif()
 
 if(SERVER OR BUILTINSERVER)
