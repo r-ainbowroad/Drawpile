@@ -38,7 +38,9 @@ public:
 		DP_CanvasHistorySoftResetFn softResetFn, void *softResetUser,
 		DP_PaintEnginePlaybackFn playbackFn,
 		DP_PaintEngineDumpPlaybackFn dumpPlaybackFn, void *playbackUser,
-		const CanvasState &canvasState = CanvasState::null());
+		const CanvasState &canvasState = CanvasState::null(),
+		DP_PaintEngineSyncCanvasStateFn syncCanvasStateFn = nullptr,
+		void *syncCanvasStateUser = nullptr);
 
 	~PaintEngine();
 

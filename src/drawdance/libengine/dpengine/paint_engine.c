@@ -165,6 +165,10 @@ struct DP_PaintEngine {
         DP_PaintEngineDumpPlaybackFn dump_fn;
         void *user;
     } playback;
+    struct {
+        DP_PaintEngineSyncCanvasStateFn fn;
+        void *user;
+    } sync_canvas_state;
 };
 
 
@@ -312,6 +316,12 @@ static void handle_internal(DP_PaintEngine *pe, DP_DrawContext *dc,
         // session or during a reset, so say we're 100% caught up after cleanup.
         push_cleanup_message(pe, DP_msg_internal_catchup_new(0, 100));
         DP_MUTEX_MUST_UNLOCK(pe->queue_mutex);
+        break;
+    case DP_MSG_INTERNAL_TYPE_SYNC_CANVAS_STATE:
+        if (pe->sync_canvas_state.fn) {
+            DP_CanvasState *cs = DP_canvas_history_get(pe->ch);
+            pe->sync_canvas_state.fn(pe->sync_canvas_state.user, cs);
+        }
         break;
     case DP_MSG_INTERNAL_TYPE_PREVIEW:
         free_preview(DP_atomic_ptr_xch(
@@ -673,7 +683,9 @@ DP_PaintEngine *DP_paint_engine_new_inc(
     bool want_canvas_history_dump, const char *canvas_history_dump_dir,
     DP_RecorderGetTimeMsFn get_time_ms_fn, void *get_time_ms_user,
     DP_Player *player_or_null, DP_PaintEnginePlaybackFn playback_fn,
-    DP_PaintEngineDumpPlaybackFn dump_playback_fn, void *playback_user)
+    DP_PaintEngineDumpPlaybackFn dump_playback_fn, void *playback_user,
+    DP_PaintEngineSyncCanvasStateFn sync_canvas_state_fn,
+    void *sync_canvas_state_user)
 {
     DP_PaintEngine *pe = DP_malloc(sizeof(*pe));
 
@@ -741,6 +753,8 @@ DP_PaintEngine *DP_paint_engine_new_inc(
     pe->playback.fn = playback_fn;
     pe->playback.dump_fn = dump_playback_fn;
     pe->playback.user = playback_user;
+    pe->sync_canvas_state.fn = sync_canvas_state_fn;
+    pe->sync_canvas_state.user = sync_canvas_state_user;
     return pe;
 }
 

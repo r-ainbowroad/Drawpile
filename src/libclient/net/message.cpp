@@ -102,6 +102,10 @@ Message makeInternalSnapshotMessage(uint8_t contextId)
 	return Message::noinc(DP_msg_internal_snapshot_new(contextId));
 }
 
+Message makeInternalSyncCanvasStateMessage() {
+	return Message::noinc(DP_msg_internal_sync_canvas_state_new(0));
+}
+
 Message makeKeyFrameLayerAttributesMessage(
 	uint8_t contextId, uint16_t trackId, uint16_t frameIndex,
 	const QVector<uint16_t> &layers)

@@ -38,6 +38,7 @@ typedef enum DP_MsgInternalType {
     DP_MSG_INTERNAL_TYPE_DUMP_COMMAND,
     DP_MSG_INTERNAL_TYPE_LOCAL_FORK_CLEAR,
     DP_MSG_INTERNAL_TYPE_FLUSH,
+    DP_MSG_INTERNAL_TYPE_SYNC_CANVAS_STATE,
     DP_MSG_INTERNAL_TYPE_COUNT,
 } DP_MsgInternalType;
 
@@ -50,6 +51,8 @@ DP_Message *DP_msg_internal_reset_to_state_new(unsigned int context_id,
                                                void *data);
 
 DP_Message *DP_msg_internal_snapshot_new(unsigned int context_id);
+
+DP_Message *DP_msg_internal_sync_canvas_state_new(unsigned int context_id);
 
 DP_Message *DP_msg_internal_catchup_new(unsigned int context_id, int progress);
 

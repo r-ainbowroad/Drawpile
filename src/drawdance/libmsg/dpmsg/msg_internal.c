@@ -138,6 +138,12 @@ DP_Message *DP_msg_internal_snapshot_new(unsigned int context_id)
                             sizeof(DP_MsgInternal));
 }
 
+DP_Message *DP_msg_internal_sync_canvas_state_new(unsigned int context_id)
+{
+    return msg_internal_new(context_id, DP_MSG_INTERNAL_TYPE_SYNC_CANVAS_STATE,
+                            sizeof(DP_MsgInternal));
+}
+
 DP_Message *DP_msg_internal_catchup_new(unsigned int context_id, int progress)
 {
     DP_Message *msg = msg_internal_new(context_id, DP_MSG_INTERNAL_TYPE_CATCHUP,

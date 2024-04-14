@@ -21,7 +21,9 @@ PaintEngine::PaintEngine(
 	void *rendererUser, DP_CanvasHistorySoftResetFn softResetFn,
 	void *softResetUser, DP_PaintEnginePlaybackFn playbackFn,
 	DP_PaintEngineDumpPlaybackFn dumpPlaybackFn, void *playbackUser,
-	const CanvasState &canvasState)
+	const CanvasState &canvasState,
+	DP_PaintEngineSyncCanvasStateFn syncCanvasStateFn,
+	void *syncCanvasStateUser)
 	: m_paintDc{DrawContextPool::acquire()}
 	, m_mainDc{DrawContextPool::acquire()}
 	, m_previewDc{DrawContextPool::acquire()}
@@ -32,7 +34,8 @@ PaintEngine::PaintEngine(
 		  rendererResizeFn, rendererUser, DP_snapshot_queue_on_save_point,
 		  sq.get(), softResetFn, softResetUser, wantCanvasHistoryDump,
 		  getDumpDir().toUtf8().constData(), &PaintEngine::getTimeMs, nullptr,
-		  nullptr, playbackFn, dumpPlaybackFn, playbackUser))
+		  nullptr, playbackFn, dumpPlaybackFn, playbackUser, syncCanvasStateFn,
+		  syncCanvasStateUser))
 {
 }
 
@@ -71,7 +74,7 @@ net::MessageList PaintEngine::reset(
 		rendererResizeFn, rendererUser, DP_snapshot_queue_on_save_point,
 		sq.get(), softResetFn, softResetUser, wantCanvasHistoryDump,
 		getDumpDir().toUtf8().constData(), &PaintEngine::getTimeMs, nullptr,
-		player, playbackFn, dumpPlaybackFn, playbackUser);
+		player, playbackFn, dumpPlaybackFn, playbackUser, nullptr, nullptr);
 	return localResetImage;
 }
 

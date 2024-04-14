@@ -54,6 +54,8 @@ Message makeInternalResetMessage(uint8_t contextId);
 
 Message makeInternalSnapshotMessage(uint8_t contextId);
 
+Message makeInternalSyncCanvasStateMessage();
+
 Message makeKeyFrameSetMessage(
 	uint8_t contextId, uint16_t trackId, uint16_t frameIndex, uint16_t sourceId,
 	uint16_t sourceIndex, uint8_t source);

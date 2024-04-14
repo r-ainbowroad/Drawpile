@@ -48,6 +48,8 @@ typedef struct DP_LayerContent DP_TransientLayerContent;
 #endif
 
 typedef void (*DP_PaintEnginePlaybackFn)(void *user, long long position);
+typedef void (*DP_PaintEngineSyncCanvasStateFn)(void *user,
+                                                DP_CanvasState *cs);
 typedef void (*DP_PaintEngineDumpPlaybackFn)(void *user, long long position,
                                              DP_CanvasHistorySnapshot *chs);
 typedef void (*DP_PaintEngineAclsChangedFn)(void *user, int acl_change_flags);
@@ -88,7 +90,9 @@ DP_PaintEngine *DP_paint_engine_new_inc(
     bool want_canvas_history_dump, const char *canvas_history_dump_dir,
     DP_RecorderGetTimeMsFn get_time_ms_fn, void *get_time_ms_user,
     DP_Player *player_or_null, DP_PaintEnginePlaybackFn playback_fn,
-    DP_PaintEngineDumpPlaybackFn dump_playback_fn, void *playback_user);
+    DP_PaintEngineDumpPlaybackFn dump_playback_fn, void *playback_user,
+    DP_PaintEngineSyncCanvasStateFn sync_canvas_state_fn,
+    void *sync_canvas_state_user);
 
 void DP_paint_engine_free_join(DP_PaintEngine *pe);
 
