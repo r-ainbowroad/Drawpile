@@ -125,6 +125,27 @@ void BGRA8OffsetImage::crop(DP_UPixel8 trimColor)
 	height = newHeight;
 }
 
+void BGRA8OffsetImage::copyFrom(
+	const BGRA8OffsetImage &other, int offsetX, int offsetY)
+{
+	if(other.sizeInPixels() == 0 || !other.pixels)
+		return;
+	if(offsetX <= -other.width || offsetX >= width ||
+	   offsetY <= -other.height || offsetY >= height)
+		return;
+	int startX = std::clamp(offsetX, 0, width);
+	int startY = std::clamp(offsetY, 0, height);
+	int endX = std::clamp(offsetX + other.width, 0, width);
+	int endY = std::clamp(offsetY + other.height, 0, height);
+
+	// We now know there is at least one pixel of overlap and have start and end
+	// bounds.
+	for(int yp = startY; yp < endY; ++yp)
+		for(int xp = startX; xp < endX; ++xp)
+			pixels[yp * width + xp] =
+				other.pixels[(yp - offsetY) * other.width + (xp - offsetX)];
+}
+
 std::vector<char> BGRA8OffsetImage::toPng() const
 {
 	void **buffer;

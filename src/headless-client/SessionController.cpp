@@ -284,11 +284,19 @@ void SessionController::processMessage()
 	case DP_MSG_CHAT:
 		handleChatMessage(msg);
 		break;
-	case DP_MSG_CANVAS_RESIZE:
-		// TODO: Handle resize. Send a mqtt message containing the resize, and
-		//       record the resize as a canvas sync event so that diffing still
-		//       works (we need to know which way the canvas grew).
+	case DP_MSG_CANVAS_RESIZE: {
+		enqueueCanvasSync([this, msg](const drawdance::CanvasState &) {
+			// We don't want to actually resize the canvas until the next
+			// commit, but we do need to record what direction the canvas
+			// changed in to be able to compare correctly and inform clients.
+			DP_MsgCanvasResize *resize = DP_msg_canvas_resize_cast(msg.get());
+			m_previousResize.top = DP_msg_canvas_resize_top(resize);
+			m_previousResize.bottom = DP_msg_canvas_resize_bottom(resize);
+			m_previousResize.left = DP_msg_canvas_resize_left(resize);
+			m_previousResize.right = DP_msg_canvas_resize_right(resize);
+		});
 		break;
+	}
 	default:
 		break;
 	}
@@ -517,15 +525,14 @@ QCoro::Task<> SessionController::handleCommit(
 	// TODO: Investigate using canvas diffing for this. Drawdance supports
 	//       efficient diffing of different canvas states.
 	if(!m_previousCommit.isNull()) {
+		bool resized = false;
 		if(fullImg.width != m_previousImage.width ||
 		   fullImg.height != m_previousImage.height) {
-			std::println(
-				std::cout, "resize, w:{}, h:{}", m_previousImage.width,
-				m_previousImage.height);
-			std::cout.flush();
-			sendChatMessage(
-				"%reset Canvas resolution changed! I can't handle that yet.");
-			co_return;
+			resized = true;
+			BGRA8OffsetImage resizedImage(fullImg.width, fullImg.height);
+			resizedImage.copyFrom(
+				m_previousImage, m_previousResize.left, m_previousResize.top);
+			m_previousImage = std::move(resizedImage);
 		}
 		DP_UPixel8 *oldImg = m_previousImage.pixels;
 		DP_UPixel8 *newImg = fullImg.pixels;
@@ -538,7 +545,7 @@ QCoro::Task<> SessionController::handleCommit(
 		}
 		BGRA8OffsetImage diff{diffImg, 0, 0, fullImg.width, fullImg.height};
 		diff.crop({.bytes = {.b = 255, .g = 255, .r = 0, .a = 254}});
-		if(diff.sizeInPixels() == 0) {
+		if(diff.sizeInPixels() == 0 && !resized) {
 			// No diff in this commit, but we still need to send a committed
 			// message. The canvas state is close enough to what it was before
 			// that saving a new canvas state is ok on reload.
@@ -553,21 +560,36 @@ QCoro::Task<> SessionController::handleCommit(
 		pendingTasks.push_back(pushLayerToCDN(
 			fullImg, "full", QString("full/%1.png").arg(commitId)));
 
-		std::vector<char> pngBytes = diff.toPng();
-		QByteArray imageBytes(
-			pngBytes.data(), static_cast<int>(pngBytes.size()));
-		QByteArray diffString("data:image/png;base64,");
-		diffString += imageBytes.toBase64();
-		// TODO: Add a QByteArray -> std::string_view conversion to avoid the
-		//       copy here.
-		// TODO: json escape the commit message.
-		std::string mqttUpdate = std::format(
-			R"({{"type":"diff","previous_id":{},"id":{},"x":{},"y":{},"message":"{}","diff":"{}"}})",
-			m_previousCommitId, commitId, diff.x, diff.y, commitMessage,
-			diffString.toStdString());
+		QJsonObject obj(
+			{{"type", "diff"},
+			 {"previous_id", m_previousCommitId},
+			 {"id", commitId},
+			 {"x", diff.x},
+			 {"y", diff.y},
+			 {"message", QString::fromStdString(commitMessage)}});
+		if(diff.sizeInBytes() != 0) {
+			std::vector<char> pngBytes = diff.toPng();
+			QByteArray imageBytes(
+				pngBytes.data(), static_cast<int>(pngBytes.size()));
+			QByteArray diffString("data:image/png;base64,");
+			diffString += imageBytes.toBase64();
+			obj["diff"] = QString(diffString);
+		}
+		if(resized) {
+			QJsonObject resizeObj;
+			if(m_previousResize.top != 0)
+				resizeObj["top"] = m_previousResize.top;
+			if(m_previousResize.bottom != 0)
+				resizeObj["bottom"] = m_previousResize.bottom;
+			if(m_previousResize.left != 0)
+				resizeObj["left"] = m_previousResize.left;
+			if(m_previousResize.right != 0)
+				resizeObj["right"] = m_previousResize.right;
+			obj["resize"] = std::move(resizeObj);
+		}
+		QByteArray mqttUpdate = QJsonDocument(obj).toJson();
 		pushLayerToCDN(diff, "diff", QString());
-		m_mqttClient->publish(
-			m_mqttTopicUpdates, QByteArray::fromStdString(mqttUpdate), 1, true);
+		m_mqttClient->publish(m_mqttTopicUpdates, mqttUpdate, 1, true);
 		// TODO: Don't fully confirm commits until we get a
 		//       QMqttClient::messageSent signal that says the broker got it.
 		co_await awaitPendingTasks();

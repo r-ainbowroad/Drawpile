@@ -148,6 +148,15 @@ struct BGRA8OffsetImage {
 		, height(height)
 	{
 	}
+
+	BGRA8OffsetImage(int width, int height)
+		: width(width)
+		, height(height)
+	{
+		pixels = static_cast<DP_UPixel8 *>(DP_malloc(sizeInBytes()));
+		std::memset(pixels, 0, sizeInBytes());
+	}
+
 	BGRA8OffsetImage(BGRA8OffsetImage &&other) noexcept
 		: pixels(other.pixels)
 		, x(other.x)
@@ -177,6 +186,8 @@ struct BGRA8OffsetImage {
 	size_t sizeInBytes() const { return sizeInPixels() * sizeof(DP_UPixel8); }
 
 	void crop(DP_UPixel8 trimColor);
+	void
+	copyFrom(const BGRA8OffsetImage &other, int offsetX = 0, int offsetY = 0);
 	std::vector<char> toPng() const;
 
 	DP_UPixel8 *pixels = nullptr;

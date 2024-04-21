@@ -99,6 +99,12 @@ private:
 	std::vector<DP_UPixel8> m_previousPalette;
 	BGRA8OffsetImage m_previousImage{nullptr, 0, 0, 0, 0};
 	int64_t m_previousCommitId = 0;
+	struct {
+		int top;
+		int bottom;
+		int left;
+		int right;
+	} m_previousResize{};
 };
 
 #endif // HEADLESS_CLIENT_SESSION_CONTROLLER_H
