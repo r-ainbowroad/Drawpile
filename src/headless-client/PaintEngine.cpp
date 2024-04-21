@@ -54,6 +54,7 @@ void PaintEngine::enqueueCanvasSync(SyncCallback callback)
 	onMessagesReceived(1, &msg);
 }
 
+// NOTE: This is called from the paint engine thread.
 void PaintEngine::onSyncCanvasState(void *user, DP_CanvasState *cs)
 {
 	auto *self = static_cast<PaintEngine *>(user);

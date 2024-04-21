@@ -9,6 +9,7 @@
 #include <QFuture>
 #include <QMqttClient>
 #include <QUrl>
+#include <deque>
 #include <memory>
 
 struct SessionSettings {
@@ -18,6 +19,14 @@ struct SessionSettings {
 	QUrl mqttUrl;
 	QUrl s3Url;
 };
+
+template <typename T, typename... U>
+concept isAnyOf = (std::same_as<T, U> || ...);
+
+template <typename F, typename... U>
+concept returnsVoidOrTask =
+	std::invocable<F, U...> &&
+	isAnyOf<typename std::invoke_result<F, U...>::type, void, QCoro::Task<>>;
 
 // This class is responsible for connecting and driving all the high level bits
 // of managing template updates.
@@ -48,7 +57,8 @@ private:
 	// current message, to the paint engine.
 	void processMessage();
 	void enqueuePendingMessages();
-	void enqueueCanvasSync(std::function<void(drawdance::CanvasState)> func);
+	void enqueueCanvasSync(returnsVoidOrTask<drawdance::CanvasState> auto func);
+	QCoro::Task<> enqueueCanvasHistory(returnsVoidOrTask<> auto func);
 	void handleChatMessage(const net::Message &chatMsg);
 	void handleJoin(const net::Message &msg);
 	void handleFullyCaughtUp();
@@ -80,6 +90,9 @@ private:
 	std::vector<DP_UPixel8> m_palette;
 
 	// Change tracking
+	std::deque<std::function<std::optional<QCoro::Task<>>()>>
+		m_canvasHistoryModificationQueue;
+	bool m_working = false;
 	bool m_isJoinedMessagePresent = false;
 	bool m_isPreviousCommitConfirmed = true;
 	drawdance::CanvasState m_previousCommit;

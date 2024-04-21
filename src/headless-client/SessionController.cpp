@@ -17,6 +17,7 @@
 
 #include <format>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 extern "C" {
@@ -169,26 +170,78 @@ void SessionController::enqueuePendingMessages()
 }
 
 void SessionController::enqueueCanvasSync(
-	std::function<void(drawdance::CanvasState)> func)
+	returnsVoidOrTask<drawdance::CanvasState> auto func)
 {
 	// Send all pending messages to the paint engine so the canvas sync happens
 	// after they have all been processed.
 	enqueuePendingMessages();
-	QObject *context = this;
-	// This callback runs on the paint thread, so we need to enqueue another
-	// callback on the main thread to call the original callback.
-	m_paintEngine->enqueueCanvasSync(
-		[context, func = std::move(func)](drawdance::CanvasState cs) mutable {
-			// TODO: Given that handleCommit is a coroutine, this needs to
-			//       synchronize with that, and only run when no other canvas
-			//       sync coroutine is running.
-			QMetaObject::invokeMethod(
-				context,
-				[func = std::move(func), cs = std::move(cs)]() mutable {
-					func(std::move(cs));
-				},
-				Qt::QueuedConnection);
+	SessionController *context = this;
+
+	// The purpose of this code is to first get a CanvasState object
+	// representing the canvas at this point in the message stream, then run
+	// each `func` passed to this function in isolation on SessionController's
+	// thread, even if func is itself a coroutine that yields back to the event
+	// loop.
+	//
+	// To do this we need three lambdas:
+	//
+	// The outer lambda is called on the paint engine thread when the canvas
+	// state is ready. All this does is queue a lambda on SessionController's
+	// event loop.
+	//
+	// The middle lambda runs on SessionController's thread and starts a
+	// task coroutine on the canvas history modification queue.
+	//
+	// The inner lambda is just there to handle passing in the CanvasState.
+	m_paintEngine->enqueueCanvasSync([context, func = std::move(func)](
+										 drawdance::CanvasState cs) mutable {
+		// On paint engine thread
+		QMetaObject::invokeMethod(
+			context,
+			[context, func = std::move(func), cs = std::move(cs)]() mutable {
+				// Back on SessionController's thread
+				context->enqueueCanvasHistory(
+					[func = std::move(func), cs = std::move(cs)]() mutable {
+						return func(std::move(cs));
+					});
+			},
+			Qt::QueuedConnection);
+	});
+}
+
+// TODO: This should be broken out into a separate class.
+QCoro::Task<>
+SessionController::enqueueCanvasHistory(returnsVoidOrTask<> auto func)
+{
+	m_canvasHistoryModificationQueue.push_back(
+		[func = std::move(func)]() mutable -> std::optional<QCoro::Task<>> {
+			// Handle both QCoro::Task<> and void returning
+			// funcs.
+			if constexpr(std::is_same_v<
+							 std::invoke_result_t<decltype(func)>, void>) {
+				func();
+				return std::nullopt;
+			} else
+				return func();
 		});
+
+	// This can be called while another task is suspended, so just let the
+	// already running task handle the task that was just added to the queue.
+	if(m_working)
+		co_return;
+
+	m_working = true;
+	while(!m_canvasHistoryModificationQueue.empty()) {
+		// This runs the function up to the first suspend point or
+		// return.
+		std::optional<QCoro::Task<>> task =
+			m_canvasHistoryModificationQueue.front()();
+		if(task)
+			co_await *task;
+		// Don't destroy the lambda object until after the task is complete.
+		m_canvasHistoryModificationQueue.pop_front();
+	}
+	m_working = false;
 }
 
 void SessionController::processMessage()
@@ -303,11 +356,14 @@ void SessionController::handleChatMessage(const net::Message &chatMsg)
 			enqueueCanvasSync(
 				[this, commitMsg = std::string(cmd.rest),
 				 caughtUp = m_isCaughtUp](drawdance::CanvasState cs) mutable {
-					this->handleCommit(
+					return this->handleCommit(
 						std::move(cs), std::move(commitMsg), caughtUp);
 				});
 		} else if(cmd.command == "reset" && m_isCaughtUp) {
-			sendChatMessage("%reset requested");
+			// Don't send a %reset while a commit is being processed.
+			enqueueCanvasHistory([this]{
+				sendChatMessage("%reset requested");
+			});
 		}
 	} else if(cmd.type == '%') {
 		if(!cmd.sender.isLocal) {
@@ -562,10 +618,10 @@ QCoro::Task<> SessionController::pushLayerToCDN(
 	QProcess rclone;
 	rclone.setEnvironment(m_rcloneEnv);
 	rclone.start(
-		"rclone", QStringList() << "copyto"
-								<< "-c" << QString::fromStdString(where)
-								<< QString("minio:templates/%1/%2")
-									   .arg(m_settings.faction, cdnPath));
+		"rclone", QStringList()
+					  << "copyto" << "-c" << QString::fromStdString(where)
+					  << QString("minio:templates/%1/%2")
+							 .arg(m_settings.faction, cdnPath));
 	co_await qCoro(rclone).waitForFinished();
 	// TODO: Handle upload failure.
 }
