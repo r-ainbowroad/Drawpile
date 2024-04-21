@@ -361,7 +361,7 @@ void SessionController::handleChatMessage(const net::Message &chatMsg)
 				});
 		} else if(cmd.command == "reset" && m_isCaughtUp) {
 			// Don't send a %reset while a commit is being processed.
-			enqueueCanvasHistory([this]{
+			enqueueCanvasHistory([this] {
 				sendChatMessage("%reset requested");
 			});
 		}
