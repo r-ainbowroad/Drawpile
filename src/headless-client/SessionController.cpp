@@ -257,9 +257,21 @@ void SessionController::processMessage()
 	DP_MessageType type = msg.type();
 	switch(type) {
 	case DP_MSG_SERVER_COMMAND: {
+		auto reply = net::ServerReply::fromMessage(msg);
+		if(reply.type == net::ServerReply::ReplyType::Reset &&
+		   reply.reply["state"] == "reset") {
+			enqueuePendingMessages();
+			net::Message resetMsg = net::makeInternalResetMessage(0);
+			m_paintEngine->onMessagesReceived(1, &resetMsg);
+
+			// Send a joined message so that we don't emit the normal
+			// one after catchup or on reconnect. The next commit will
+			// still be a diff as long as a reconnect has not happened
+			// in between.
+			sendChatMessage("%joined The drawpile session was just rest");
+		}
 		if(m_isCaughtUp)
 			break;
-		auto reply = net::ServerReply::fromMessage(msg);
 		switch(reply.type) {
 		case net::ServerReply::ReplyType::Catchup:
 			m_catchUpKey = reply.reply.value("key").toInt(-1);
