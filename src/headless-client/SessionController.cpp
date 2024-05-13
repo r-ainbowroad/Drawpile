@@ -660,6 +660,13 @@ QCoro::Task<> SessionController::pushLayerToCDN(
 					  << "copyto" << "-c" << QString::fromStdString(where)
 					  << QString("minio:templates/%1/%2")
 							 .arg(m_settings.faction, cdnPath));
+	connect(
+		&rclone, &QProcess::errorOccurred, this,
+		[](QProcess::ProcessError error) {
+			std::cerr << QtEnumToString(error) << std::endl;
+		});
 	co_await qCoro(rclone).waitForFinished();
+	if(rclone.exitCode() != 0)
+		std::cerr << rclone.readAllStandardError().toStdString() << std::endl;
 	// TODO: Handle upload failure.
 }
