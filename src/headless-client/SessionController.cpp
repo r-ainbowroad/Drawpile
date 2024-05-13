@@ -512,6 +512,8 @@ QCoro::Task<> SessionController::handleCommit(
 	//       palettize once at each top level layer in transient layer space?
 	BGRA8OffsetImage fullImg = renderer.toPixels(
 		renderer.m_fullImage.m_renderedLayer, false, m_palette);
+	QCoro::Task<> fullUploadTask =
+		pushLayerToCDN(fullImg, "full", QString("full/%1.png").arg(commitId));
 
 	if(m_previousImage.pixels == nullptr && !m_previousCommit.isNull()) {
 		// We just rejoined a session with existing history. Render the previous
@@ -569,9 +571,6 @@ QCoro::Task<> SessionController::handleCommit(
 			co_return;
 		}
 
-		pendingTasks.push_back(pushLayerToCDN(
-			fullImg, "full", QString("full/%1.png").arg(commitId)));
-
 		QJsonObject obj(
 			{{"type", "diff"},
 			 {"previous_id", m_previousCommitId},
@@ -601,6 +600,7 @@ QCoro::Task<> SessionController::handleCommit(
 		}
 		QByteArray mqttUpdate = QJsonDocument(obj).toJson();
 		pushLayerToCDN(diff, "diff", QString());
+		co_await fullUploadTask;
 		m_mqttClient->publish(m_mqttTopicUpdates, mqttUpdate, 1, true);
 		// TODO: Don't fully confirm commits until we get a
 		//       QMqttClient::messageSent signal that says the broker got it.
