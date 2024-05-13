@@ -524,13 +524,17 @@ QCoro::Task<> SessionController::handleCommit(
 			prevRenderer.m_fullImage.m_renderedLayer, false, m_previousPalette);
 	} else if(m_previousCommit.isNull()) {
 		// This is the first commit after a reset, send a special message.
-		// TODO: send mqtt reset message.
+		QJsonObject obj(
+			{{"type", "full"},
+			 {"id", commitId},
+			 {"message", QString::fromStdString(commitMessage)}});
+		QByteArray mqttUpdate = QJsonDocument(obj).toJson();
+		co_await fullUploadTask;
+		m_mqttClient->publish(m_mqttTopicUpdates, mqttUpdate, 1, true);
+		co_await awaitPendingTasks();
 		m_previousCommit = std::move(cs);
 		m_previousCommitId = commitId;
-		m_previousImage = {};
-		pendingTasks.push_back(pushLayerToCDN(
-			fullImg, "full", QString("full/%1.png").arg(commitId)));
-		co_await awaitPendingTasks();
+		m_previousImage = std::move(fullImg);
 		sendChatMessage(QString::fromStdString(std::format(
 			"%committed {} from full image: {}", commitId, commitMessage)));
 		co_return;
