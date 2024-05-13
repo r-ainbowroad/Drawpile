@@ -167,10 +167,6 @@ target_sources(drawpile PRIVATE
 	dialogs/startdialog/links.h
 	dialogs/startdialog/page.cpp
 	dialogs/startdialog/page.h
-	dialogs/startdialog/recent.cpp
-	dialogs/startdialog/recent.h
-	dialogs/startdialog/updatenotice.cpp
-	dialogs/startdialog/updatenotice.h
 	dialogs/startdialog/welcome.cpp
 	dialogs/startdialog/welcome.h
 	dialogs/systeminfodialog.cpp
@@ -322,6 +318,8 @@ target_sources(drawpile PRIVATE
 	view/viewwrapper.h
 	widgets/brushpreview.cpp
 	widgets/brushpreview.h
+	widgets/canvasframe.cpp
+	widgets/canvasframe.h
 	widgets/canvasshortcutedit.cpp
 	widgets/canvasshortcutedit.h
 	widgets/colorbutton.cpp
@@ -370,6 +368,8 @@ target_sources(drawpile PRIVATE
 	widgets/recentscroll.h
 	widgets/resizerwidget.cpp
 	widgets/resizerwidget.h
+	widgets/rulerwidget.cpp
+	widgets/rulerwidget.h
 	widgets/serverlogview.cpp
 	widgets/serverlogview.h
 	widgets/spanawaretreeview.cpp
@@ -386,6 +386,8 @@ target_sources(drawpile PRIVATE
 	widgets/viewstatus.h
 	widgets/viewstatusbar.cpp
 	widgets/viewstatusbar.h
+	widgets/zoomslider.cpp
+	widgets/zoomslider.h
 )
 
 target_link_libraries(drawpile PRIVATE
@@ -623,6 +625,12 @@ endif()
 add_feature_info("External QtColorWidgets" "TARGET QtColorWidgets::QtColorWidgets" "")
 
 if(NOT EMSCRIPTEN)
+	target_sources(drawpile PRIVATE
+		dialogs/startdialog/recent.cpp
+		dialogs/startdialog/recent.h
+		dialogs/startdialog/updatenotice.cpp
+		dialogs/startdialog/updatenotice.h
+	)
 	dp_install_executables(TARGETS drawpile INCLUDE_BUNDLEDIR)
 endif()
 
@@ -871,10 +879,11 @@ elseif(EMSCRIPTEN)
 	target_link_options(drawpile PUBLIC
 		-sASYNCIFY
 		-sMAXIMUM_MEMORY=4294967296
-		-sEXPORTED_FUNCTIONS=_main,_drawpileHandleBrowserAuth,_drawpileHandleMouseLeave,_drawpileShouldPreventUnload,stringToNewUTF8,UTF8ToString
+		-sEXPORTED_FUNCTIONS=_main,_drawpileMain,_drawpileInitScheduleSyncPersistentFileSystem,_drawpileFinishPersistentFileSystemSync,_drawpileHandleBrowserAuth,_drawpileHandleMouseLeave,_drawpileShouldPreventUnload,stringToNewUTF8,UTF8ToString
 		--js-library "${CMAKE_CURRENT_SOURCE_DIR}/wasm/lib.js"
+		-lidbfs.js
 	)
-	if(CMAKE_BUILD_TYPE MATCHES "^[rR}[eE][lL]")
+	if(CMAKE_BUILD_TYPE MATCHES "^[rR][eE][lL]")
 		target_link_options(drawpile PUBLIC -O3)
 	endif()
 elseif(UNIX)

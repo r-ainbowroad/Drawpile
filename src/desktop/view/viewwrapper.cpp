@@ -16,6 +16,7 @@
 #include "desktop/view/canvasview.h"
 #include "desktop/view/glcanvas.h"
 #include "desktop/view/softwarecanvas.h"
+#include "desktop/widgets/canvasframe.h"
 #include "desktop/widgets/viewstatus.h"
 #include "desktop/widgets/viewstatusbar.h"
 #include "libclient/document.h"
@@ -34,7 +35,7 @@ ViewWrapper::ViewWrapper(bool useOpenGl, QWidget *parent)
 		m_scene, &CanvasScene::setUserMarkerPersistence);
 }
 
-QWidget *ViewWrapper::viewWidget() const
+QAbstractScrollArea *ViewWrapper::viewWidget() const
 {
 	return m_view;
 }
@@ -236,6 +237,16 @@ void ViewWrapper::connectActions(const Actions &actions)
 		&CanvasScene::setEvadeUserCursors);
 }
 
+void ViewWrapper::connectCanvasFrame(widgets::CanvasFrame *canvasFrame)
+{
+	connect(
+		m_controller, &CanvasController::transformChanged, canvasFrame,
+		&widgets::CanvasFrame::setTransform);
+	connect(
+		m_controller, &CanvasController::viewChanged, canvasFrame,
+		&widgets::CanvasFrame::setView);
+}
+
 void ViewWrapper::connectDocument(Document *doc)
 {
 	connect(
@@ -397,6 +408,9 @@ void ViewWrapper::connectViewStatus(widgets::ViewStatus *viewStatus)
 	connect(
 		m_controller, &CanvasController::transformChanged, viewStatus,
 		&widgets::ViewStatus::setTransformation);
+	connect(
+		viewStatus, &widgets::ViewStatus::zoomStepped, m_controller,
+		&CanvasController::zoomSteps);
 	connect(
 		viewStatus, &widgets::ViewStatus::zoomChanged, m_controller,
 		&CanvasController::setZoom);

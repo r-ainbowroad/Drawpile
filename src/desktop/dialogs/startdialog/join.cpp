@@ -23,8 +23,8 @@ Join::Join(QWidget *parent)
 	setLayout(layout);
 
 	QLabel *urlLabel = new QLabel{
-		tr("Enter a <strong>session URL</strong>, <strong>host name</strong>, "
-		   "<strong>IP address</strong> or <strong>room code</strong>:")};
+		tr("Enter a <strong>session URL</strong>, <strong>host name</strong> "
+		   "or <strong>IP address</strong>:")};
 	layout->addWidget(urlLabel);
 
 	m_addressEdit = new QLineEdit;
@@ -85,17 +85,10 @@ void Join::acceptAddress(const QString &address)
 void Join::addressChanged(const QString &address)
 {
 	m_addressMessageLabel->setText(QString{});
-	if(looksLikeRoomcode(address)) {
-		m_addressEdit->setText(QString{});
-		m_addressEdit->setPlaceholderText(tr("Searching…"));
-		m_addressEdit->setReadOnly(true);
-		resolveRoomcode(address, getRoomcodeServerUrls());
-	} else {
-		QString fixedUpUrl = fixUpInviteAddress(address);
-		if(!fixedUpUrl.isEmpty()) {
-			QSignalBlocker blocker{m_addressEdit};
-			m_addressEdit->setText(fixedUpUrl);
-		}
+	QString fixedUpUrl = fixUpInviteOrWebAddress(address);
+	if(!fixedUpUrl.isEmpty()) {
+		QSignalBlocker blocker{m_addressEdit};
+		m_addressEdit->setText(fixedUpUrl);
 	}
 	updateJoinButton();
 }
@@ -120,105 +113,59 @@ void Join::updateJoinButton()
 	emit enableJoin(getUrl().isValid());
 }
 
-bool Join::looksLikeRoomcode(const QString &address)
-{
-	static QRegularExpression roomcodeRe{"\\A[A-Z]{5}\\z"};
-	return roomcodeRe.match(address).hasMatch();
-}
-
-QString Join::fixUpInviteAddress(const QString &address)
+QString Join::fixUpInviteOrWebAddress(const QString &address)
 {
 	static QRegularExpression inviteRe{
 		"\\A/invites/([^:/]+)(?::([0-9]+))?/+([a-zA-Z0-9-]{1,50})/*\\z"};
 
 	QUrl url = QUrl::fromUserInput(address);
 	if(!url.scheme().startsWith("http", Qt::CaseInsensitive)) {
-		return QString{};
+		return QString();
 	}
 
 	QRegularExpressionMatch match = inviteRe.match(url.path());
-	if(!match.hasMatch()) {
-		return QString{};
-	}
-
-	url.setScheme("drawpile");
-	url.setHost(match.captured(1));
-	int port = match.captured(2).toInt();
-	if(port > 0 && port <= 65535 && port != cmake_config::proto::port()) {
-		url.setPort(port);
-	} else {
-		url.setPort(-1);
-	}
-	url.setPath(QStringLiteral("/%1").arg(match.captured(3)));
-
-	QString password = url.fragment();
-	if(!password.isEmpty()) {
-		QUrlQuery query{url};
-		query.addQueryItem(QStringLiteral("p"), password);
-		url.setQuery(query);
-		url.setFragment(QString{});
-	}
-
-	return url.toString();
-}
-
-QStringList Join::getRoomcodeServerUrls() const
-{
-	QStringList servers;
-	for(const sessionlisting::ListServer &ls :
-		sessionlisting::ListServerModel::listServers(
-			dpApp().settings().listServers(), true)) {
-		if(ls.privateListings) {
-			servers.append((ls.url));
+	if(match.hasMatch()) {
+		url.setScheme(QStringLiteral("drawpile"));
+		url.setHost(match.captured(1));
+		int port = match.captured(2).toInt();
+		if(port > 0 && port <= 65535 && port != cmake_config::proto::port()) {
+			url.setPort(port);
+		} else {
+			url.setPort(-1);
 		}
-	}
-	return servers;
-}
+		url.setPath(QStringLiteral("/%1").arg(match.captured(3)));
 
-void Join::resolveRoomcode(const QString &roomcode, const QStringList &servers)
-{
-	if(servers.isEmpty()) {
-		// Tried all the servers and didn't find the code
-		finishResolvingRoomcode(QString{});
-		m_addressMessageLabel->setText(tr("Roomcode not found!"));
-	} else {
-		QUrl listServer = servers.first();
-		sessionlisting::AnnouncementApiResponse *response =
-			sessionlisting::queryRoomcode(listServer, roomcode);
-		connect(
-			response, &sessionlisting::AnnouncementApiResponse::finished, this,
-			[this, roomcode, servers](
-				const QVariant &result, const QString &, const QString &error) {
-				if(error.isEmpty()) {
-					sessionlisting::Session session =
-						result.value<sessionlisting::Session>();
-					QString portSuffix =
-						session.port == cmake_config::proto::port()
-							? QString{}
-							: QStringLiteral(":%1").arg(session.port);
-					QString address =
-						QStringLiteral("%1%2%3/%4")
-							.arg(
-								QStringLiteral("drawpile://"), session.host,
-								portSuffix, session.id);
-					finishResolvingRoomcode(address);
-				} else {
-					// Not found, try the next list server.
-					resolveRoomcode(roomcode, servers.mid(1));
-				}
-			});
-		connect(
-			response, &sessionlisting::AnnouncementApiResponse::finished,
-			response, &QObject::deleteLater);
-	}
-}
+		QString password = url.fragment();
+		if(!password.isEmpty()) {
+			QUrlQuery query(url);
+			query.removeAllQueryItems(QStringLiteral("p"));
+			query.addQueryItem(QStringLiteral("p"), password);
+			url.setQuery(query);
+			url.setFragment(QString());
+		}
 
-void Join::finishResolvingRoomcode(const QString &address)
-{
-	resetAddressPlaceholderText();
-	m_addressEdit->setReadOnly(false);
-	m_addressEdit->setText(address);
-	m_addressEdit->setFocus();
+		return url.toString();
+	}
+
+	QUrlQuery query(url);
+	QString host = query.queryItemValue(QStringLiteral("host"));
+	if(!host.isEmpty()) {
+		url.setScheme(QStringLiteral("drawpile"));
+		url.setHost(host);
+		query.removeAllQueryItems(QStringLiteral("host"));
+
+		QString password = url.fragment();
+		if(!password.isEmpty()) {
+			query.removeAllQueryItems(QStringLiteral("p"));
+			query.addQueryItem(QStringLiteral("p"), password);
+			url.setFragment(QString());
+		}
+
+		url.setQuery(query);
+		return url.toString();
+	}
+
+	return QString();
 }
 
 QUrl Join::getUrl() const

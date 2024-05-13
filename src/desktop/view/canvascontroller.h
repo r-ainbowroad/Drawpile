@@ -168,7 +168,7 @@ signals:
 	void penDown(
 		long long timeMsec, const QPointF &point, qreal pressure, qreal xtilt,
 		qreal ytilt, qreal rotation, bool right, float zoom,
-		const QPointF &viewPos, bool eraserOverride);
+		const QPointF &viewPos, bool applyGlobalSmoothing, bool eraserOverride);
 	void penMove(
 		long long timeMsec, const QPointF &point, qreal pressure, qreal xtilt,
 		qreal ytilt, qreal rotation, bool shift, bool alt,
@@ -197,7 +197,7 @@ private:
 	void setClearColor(const QColor clearColor);
 	void setRenderSmooth(bool renderSmooth);
 	void setTabletEnabled(bool tabletEnabled);
-	void setIgnoreZeroPressureInputs(bool setIgnoreZeroPressureInputs);
+	void setMouseSmoothing(bool mouseSmoothing);
 	void setEnableTouchScroll(bool enableTouchScroll);
 	void setEnableTouchDraw(bool enableTouchDraw);
 	void setEnableTouchPinch(bool enableTouchPinch);
@@ -246,6 +246,7 @@ private:
 	QPointF tabletPosF(QTabletEvent *event) const;
 	QPointF wheelPosF(QWheelEvent *event) const;
 	static bool isSynthetic(QMouseEvent *event);
+	static bool isSyntheticTouch(QMouseEvent *event);
 
 	Qt::KeyboardModifiers getKeyboardModifiers(const QKeyEvent *event) const;
 	Qt::KeyboardModifiers getMouseModifiers(const QMouseEvent *event) const;
@@ -320,7 +321,7 @@ private:
 	QColor m_clearColor;
 	bool m_renderSmooth = false;
 	bool m_tabletEnabled = true;
-	bool m_ignoreZeroPressureInputs = true;
+	bool m_mouseSmoothing = false;
 	KisCubicCurve m_pressureCurve;
 	bool m_pixelGrid = true;
 	bool m_pointerTracking = false;

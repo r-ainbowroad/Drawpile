@@ -57,7 +57,7 @@ CanvasView::CanvasView(QWidget *parent)
 	, m_scene(nullptr)
 	, m_zoomWheelDelta(0)
 	, m_enableTablet(true)
-	, m_ignoreZeroPressureInputs(true)
+	, m_mouseSmoothing(false)
 	, m_locked(false)
 	, m_busy(false)
 	, m_saveInProgress(false)
@@ -127,8 +127,7 @@ CanvasView::CanvasView(QWidget *parent)
 	}
 
 	settings.bindTabletEvents(this, &widgets::CanvasView::setTabletEnabled);
-	settings.bindIgnoreZeroPressureInputs(
-		this, &widgets::CanvasView::setIgnoreZeroPressureInputs);
+	settings.bindMouseSmoothing(this, &widgets::CanvasView::setMouseSmoothing);
 	settings.bindOneFingerDraw(this, &widgets::CanvasView::setTouchDraw);
 	settings.bindOneFingerScroll(this, &widgets::CanvasView::setTouchScroll);
 	settings.bindTwoFingerZoom(this, &widgets::CanvasView::setTouchPinch);
@@ -927,7 +926,7 @@ void CanvasView::setPointerTracking(bool tracking)
 }
 
 void CanvasView::onPenDown(
-	const canvas::Point &p, bool right, const QPointF &viewPos,
+	const canvas::Point &p, bool right, const QPointF &viewPos, bool isStylus,
 	bool eraserOverride)
 {
 	if(m_scene->hasImage()) {
@@ -936,7 +935,8 @@ void CanvasView::onPenDown(
 			if(!m_locked)
 				emit penDown(
 					p.timeMsec(), p, p.pressure(), p.xtilt(), p.ytilt(),
-					p.rotation(), right, m_zoom, viewPos, eraserOverride);
+					p.rotation(), right, m_zoom, viewPos,
+					isStylus || m_mouseSmoothing, eraserOverride);
 			break;
 		case PenMode::Colorpick:
 			m_scene->model()->pickColor(p.x(), p.y(), 0, 0);
@@ -1081,7 +1081,7 @@ void CanvasView::penPressEvent(
 		}
 		onPenDown(
 			mapToCanvas(timeMsec, pos, pressure, xtilt, ytilt, rotation),
-			button == Qt::RightButton, pos, eraserOverride);
+			button == Qt::RightButton, pos, isStylus, eraserOverride);
 	}
 }
 
@@ -1094,20 +1094,32 @@ static bool isSynthetic(QMouseEvent *event)
 	}
 }
 
+static bool isSyntheticTouch(QMouseEvent *event)
+{
+#ifdef Q_OS_WIN
+	// Windows may generate bogus mouse events from touches, we never want this.
+	return event->source() & Qt::MouseEventSynthesizedBySystem;
+#else
+	Q_UNUSED(event);
+	return false;
+#endif
+}
+
 //! Handle mouse press events
 void CanvasView::mousePressEvent(QMouseEvent *event)
 {
 	const auto mousePos = compat::mousePos(*event);
 	DP_EVENT_LOG(
-		"mouse_press x=%d y=%d buttons=0x%x modifiers=0x%x synthetic=%d "
-		"pendown=%d touching=%d",
+		"mouse_press x=%d y=%d buttons=0x%x modifiers=0x%x source=0x%x "
+		"pendown=%d touching=%d timestamp=%llu",
 		mousePos.x(), mousePos.y(), unsigned(event->buttons()),
-		unsigned(event->modifiers()), isSynthetic(event), m_pendown,
-		m_touching);
+		unsigned(event->modifiers()), unsigned(event->source()), m_pendown,
+		m_touching, qulonglong(event->timestamp()));
 
 	updateCursorPos(mousePos);
 
-	if((m_enableTablet && isSynthetic(event)) || m_touching) {
+	if((m_enableTablet && isSynthetic(event)) || isSyntheticTouch(event) ||
+	   m_touching) {
 		return;
 	}
 
@@ -1166,16 +1178,16 @@ void CanvasView::mouseMoveEvent(QMouseEvent *event)
 {
 	const auto mousePos = compat::mousePos(*event);
 	DP_EVENT_LOG(
-		"mouse_move x=%d y=%d buttons=0x%x modifiers=0x%x synthetic=%d "
-		"pendown=%d touching=%d",
+		"mouse_move x=%d y=%d buttons=0x%x modifiers=0x%x source=0x%x "
+		"pendown=%d touching=%d timestamp=%llu",
 		mousePos.x(), mousePos.y(), unsigned(event->buttons()),
-		unsigned(event->modifiers()), isSynthetic(event), m_pendown,
-		m_touching);
+		unsigned(event->modifiers()), unsigned(event->source()), m_pendown,
+		m_touching, qulonglong(event->timestamp()));
 
 	updateCursorPos(mousePos);
 
-	if((m_enableTablet && isSynthetic(event)) || m_pendown == TABLETDOWN ||
-	   m_touching) {
+	if((m_enableTablet && isSynthetic(event)) || isSyntheticTouch(event) ||
+	   m_pendown == TABLETDOWN || m_touching) {
 		return;
 	}
 
@@ -1378,15 +1390,16 @@ void CanvasView::mouseReleaseEvent(QMouseEvent *event)
 {
 	const auto mousePos = compat::mousePos(*event);
 	DP_EVENT_LOG(
-		"mouse_release x=%d y=%d buttons=0x%x modifiers=0x%x synthetic=%d "
-		"pendown=%d touching=%d",
+		"mouse_release x=%d y=%d buttons=0x%x modifiers=0x%x source=0x%x "
+		"pendown=%d touching=%d timestamp=%llu",
 		mousePos.x(), mousePos.y(), unsigned(event->buttons()),
-		unsigned(event->modifiers()), isSynthetic(event), m_pendown,
-		m_touching);
+		unsigned(event->modifiers()), unsigned(event->source()), m_pendown,
+		m_touching, qulonglong(event->timestamp()));
 
 	updateCursorPos(mousePos);
 
-	if((m_enableTablet && isSynthetic(event)) || m_touching) {
+	if((m_enableTablet && isSynthetic(event)) || isSyntheticTouch(event) ||
+	   m_touching) {
 		return;
 	}
 
@@ -1716,11 +1729,12 @@ void CanvasView::touchEvent(QTouchEvent *event)
 		   !compat::isTouchPad(event)) {
 			DP_EVENT_LOG(
 				"touch_draw_begin x=%f y=%f pendown=%d touching=%d type=%d "
-				"device=%s points=%s",
+				"device=%s points=%s timestamp=%llu",
 				pos.x(), pos.y(), m_pendown, m_touching,
 				compat::touchDeviceType(event),
 				qUtf8Printable(compat::touchDeviceName(event)),
-				qUtf8Printable(compat::debug(points)));
+				qUtf8Printable(compat::debug(points)),
+				qulonglong(event->timestamp()));
 			if(m_enableTouchScroll || m_enableTouchPinch ||
 			   m_enableTouchTwist) {
 				// Buffer the touch first, since it might end up being the
@@ -1738,10 +1752,11 @@ void CanvasView::touchEvent(QTouchEvent *event)
 		} else {
 			DP_EVENT_LOG(
 				"touch_begin pendown=%d touching=%d type=%d device=%s "
-				"points=%s",
+				"points=%s timestamp=%llu",
 				m_pendown, m_touching, compat::touchDeviceType(event),
 				qUtf8Printable(compat::touchDeviceName(event)),
-				qUtf8Printable(compat::debug(points)));
+				qUtf8Printable(compat::debug(points)),
+				qulonglong(event->timestamp()));
 			m_touchMode = TouchMode::Moving;
 		}
 		break;
@@ -1755,11 +1770,12 @@ void CanvasView::touchEvent(QTouchEvent *event)
 			QPointF pos = compat::touchPos(compat::touchPoints(*event).first());
 			DP_EVENT_LOG(
 				"touch_draw_update x=%f y=%f pendown=%d touching=%d type=%d "
-				"device=%s points=%s",
+				"device=%s points=%s timestamp=%llu",
 				pos.x(), pos.y(), m_pendown, m_touching,
 				compat::touchDeviceType(event),
 				qUtf8Printable(compat::touchDeviceName(event)),
-				qUtf8Printable(compat::debug(points)));
+				qUtf8Printable(compat::debug(points)),
+				qulonglong(event->timestamp()));
 			int bufferCount = m_touchDrawBuffer.size();
 			if(bufferCount == 0) {
 				if(m_touchMode == TouchMode::Drawing) {
@@ -1802,11 +1818,12 @@ void CanvasView::touchEvent(QTouchEvent *event)
 
 			DP_EVENT_LOG(
 				"touch_update x=%f y=%f pendown=%d touching=%d type=%d "
-				"device=%s points=%s",
+				"device=%s points=%s timestamp=%llu",
 				center.x(), center.y(), m_pendown, m_touching,
 				compat::touchDeviceType(event),
 				qUtf8Printable(compat::touchDeviceName(event)),
-				qUtf8Printable(compat::debug(points)));
+				qUtf8Printable(compat::debug(points)),
+				qulonglong(event->timestamp()));
 
 			if(!m_touching) {
 				m_touchStartZoom = zoom();
@@ -1896,22 +1913,25 @@ void CanvasView::touchEvent(QTouchEvent *event)
 								 m_touchMode == TouchMode::Drawing)) {
 			DP_EVENT_LOG(
 				"touch_draw_%s pendown=%d touching=%d type=%d device=%s "
-				"points=%s",
+				"points=%s timestamp=%llu",
 				event->type() == QEvent::TouchEnd ? "end" : "cancel", m_pendown,
 				m_touching, compat::touchDeviceType(event),
 				qUtf8Printable(compat::touchDeviceName(event)),
-				qUtf8Printable(compat::debug(points)));
+				qUtf8Printable(compat::debug(points)),
+				qulonglong(event->timestamp()));
 			flushTouchDrawBuffer();
 			touchReleaseEvent(
 				QDateTime::currentMSecsSinceEpoch(),
 				compat::touchPos(compat::touchPoints(*event).first()));
 		} else {
 			DP_EVENT_LOG(
-				"touch_%s pendown=%d touching=%d type=%d device=%s points=%s",
+				"touch_%s pendown=%d touching=%d type=%d device=%s points=%s "
+				"timestamp=%llu",
 				event->type() == QEvent::TouchEnd ? "end" : "cancel", m_pendown,
 				m_touching, compat::touchDeviceType(event),
 				qUtf8Printable(compat::touchDeviceName(event)),
-				qUtf8Printable(compat::debug(points)));
+				qUtf8Printable(compat::debug(points)),
+				qulonglong(event->timestamp()));
 		}
 		m_touching = false;
 		break;
@@ -2020,8 +2040,7 @@ bool CanvasView::viewportEvent(QEvent *event)
 		}
 
 		// Under Windows Ink, some tablets report bogus zero-pressure inputs.
-		if(!m_ignoreZeroPressureInputs || !m_pendown ||
-		   tabev->pressure() != 0.0) {
+		if(!m_pendown || tabev->pressure() != 0.0) {
 			updateCursorPos(tabPos.toPoint());
 			penMoveEvent(
 				QDateTime::currentMSecsSinceEpoch(), compat::tabPosF(*tabev),

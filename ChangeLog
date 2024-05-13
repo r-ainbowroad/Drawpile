@@ -2,7 +2,7 @@ Unreleased Version 2.2.2-pre
  * Feature: Allow choosing a different cursor for erase and alpha locked brushes. Thanks Hipofiz and Rylan for suggesting.
  * Server Fix: Properly sever connections on read, write and timeout errors.
  * Fix: Load annotations from ORA files saved by Drawpile 2.1 properly. Thanks RyanMolyneux for reporting.
- * Feature: Ignore inputs with invalid pressure during strokes, toggleable in the preferences in case there's tablets that behave this way in a valid case somehow. Thanks Lunalatte for reporting.
+ * Feature: Ignore inputs with invalid pressure during strokes. Thanks Lunalatte for reporting.
  * Server Fix: Handle sessions running out of space better, they should no longer end up in an unrecoverable state. The messages in chat are also now translatable, more informative and don't get spammed for every command. Thanks Bluestrings and Charmandrigo for reporting.
  * Feature: Lock canvas when the session is out of space, showing an appropriate message in the corner, rather than letting you continue drawing. The server needs to be updated for this to be available.
  * Server Fix: Make catchup not take pointlessly long when the session is out of space.
@@ -43,6 +43,19 @@ Unreleased Version 2.2.2-pre
  * Fix: Reduce contrast on censor tile stripes to make them less annoying to look at.
  * Server Feature: When you pass an option that's not compiled in, the error message will not inform you of that fact, rather than just saying you passed an unknown option with no further information.
  * Feature: On Windows and Linux, new windows now open in a separate process, since that's more efficient and resilient. Can be disabled by setting the DRAWPILE_SINGLE_PROCESS environment variable. Thanks Bluestrings for suggesting.
+ * Fix: The main window should now properly restore to its previous position even when that's on a secondary screen. Thanks Moe for reporting.
+ * Removed Feature: Roomcodes. They are a vestige from a time where Drawpile only had a single, central listing server. Nowadays nobody uses these anymore, invite links are the replacement.
+ * Feature: Disable global smoothing and jagged curve compensation for mouse and touch drawing by default, since those don't really only make sense for pen tablets. Can be toggled in the input preferences. Thanks nililfin for suggesting.
+ * Feature: Always show drawing tools toolbar in small screen mode. Thanks Blozzom for suggesting.
+ * Fix: Increase contrast on depressed buttons in dark themes. This is a patch to Qt. Thanks MorrowShore for reporting.
+ * Fix: Switch out the icon for the extension buttons on squashed menus and toolbars so that they're actually visible in dark themes. This is a patch to Qt.
+ * Feature: Make canvas zoom slider use the same increments as the mouse wheel and zoom in/out actions, since stepping by 1% is not useful. Thanks zheida for suggesting.
+ * Fix: Work around a crash on Linux that happens when hosting with busted versions of Qt 6.6+. Thanks Vanska for reporting.
+ * Fix: Allow tabbing the main window on macOS again, for some reason Qt disabled it. This is a patch to Qt. Thanks mira for reporting.
+ * Feature: Pixel ruler, available under View > Show Rulers. Thanks fluttershydev for contributing.
+ * Fix: Ignore mouse clicks caused by briefly touching the canvas on some devices on Windows. Thanks sfin for reporting.
+ * Feature: Translate links copied out of the browser version of Drawpile into something that can be joined when they are pasted into the join page.
+ * Feature: Better small-screen mode handling. The toggle items now no longer overlap, dialogs get maximized if appropriate, the start and settings dialogs get arranged horizontally.
 
 2024-02-25 Version 2.2.2-beta.1
  * Server Feature: Allow adding a message when kicking someone through the admin API.

@@ -2,7 +2,9 @@
 #include "libclient/net/server.h"
 #include "libclient/net/login.h"
 #include "libshared/net/servercmd.h"
+#include "libshared/util/whatismyip.h"
 #include <QDebug>
+#include <QUrlQuery>
 #ifdef HAVE_TCPSOCKETS
 #	include "libclient/net/tcpserver.h"
 #endif
@@ -33,36 +35,83 @@ Server *Server::make(const QUrl &url, int timeoutSecs, QObject *parent)
 
 QString Server::addSchemeToUserSuppliedAddress(const QString &remoteAddress)
 {
-	bool haveValidScheme = false;
-#ifdef HAVE_TCPSOCKETS
-	haveValidScheme = haveValidScheme ||
-					  remoteAddress.startsWith(
-						  QStringLiteral("drawpile://"), Qt::CaseInsensitive);
-#endif
-#ifdef HAVE_WEBSOCKETS
-	haveValidScheme =
-		haveValidScheme ||
+	bool haveValidScheme =
+		remoteAddress.startsWith(
+			QStringLiteral("drawpile://"), Qt::CaseInsensitive) ||
 		remoteAddress.startsWith(
 			QStringLiteral("ws://"), Qt::CaseInsensitive) ||
 		remoteAddress.startsWith(QStringLiteral("wss://"), Qt::CaseInsensitive);
-#endif
-
 	if(haveValidScheme) {
 		return remoteAddress;
 	} else {
-#if defined(HAVE_TCPSOCKETS)
-		QString scheme = QStringLiteral("drawpile");
-#elif defined(HAVE_WEBSOCKETS)
-		bool looksLikeLocalhost =
-			remoteAddress.startsWith(
-				QStringLiteral("localhost"), Qt::CaseInsensitive) ||
-			remoteAddress.startsWith("127.0.0.1") ||
-			remoteAddress.startsWith("::1");
-		QString scheme =
-			looksLikeLocalhost ? QStringLiteral("ws") : QStringLiteral("wss");
-#endif
-		return scheme + QStringLiteral("://") + remoteAddress;
+		return QStringLiteral("drawpile://") + remoteAddress;
 	}
+}
+
+QUrl Server::fixUpAddress(const QUrl &originalUrl, bool join)
+{
+#ifdef HAVE_TCPSOCKETS
+	Q_UNUSED(join);
+#else
+	if(originalUrl.scheme().compare(
+		   QStringLiteral("drawpile"), Qt::CaseInsensitive) == 0) {
+		QUrl url = originalUrl;
+		url.setScheme(
+			WhatIsMyIp::looksLikeLocalhost(url.host()) ? QStringLiteral("ws")
+													   : QStringLiteral("wss"));
+		url.setPort(-1);
+
+		QString path = url.path();
+		url.setPath(QStringLiteral("/drawpile-web/ws"));
+
+		if(join) {
+			QString autoJoinId = extractAutoJoinId(path);
+			if(!autoJoinId.isEmpty()) {
+				QUrlQuery query(url);
+				query.removeAllQueryItems(QStringLiteral("session"));
+				query.addQueryItem(QStringLiteral("session"), autoJoinId);
+				url.setQuery(query);
+			}
+		}
+
+		qInfo(
+			"Fixed up TCP URL '%s' to WebSocket URL '%s'",
+			qUtf8Printable(originalUrl.toDisplayString()),
+			qUtf8Printable(url.toDisplayString()));
+		return url;
+	}
+#endif
+
+#ifndef HAVE_WEBSOCKETS
+	if(originalUrl.scheme().compare(
+		   QStringLiteral("ws"), Qt::CaseInsensitive) == 0 ||
+	   originalUrl.scheme().compare(
+		   QStringLiteral("wss"), Qt::CaseInsensitive) == 0) {
+		QUrl url = originalUrl;
+		url.setScheme(QStringLiteral("drawpile://"));
+		url.setPort(-1);
+		url.setPath(QString());
+		qInfo(
+			"Fixed up WebSocket URL '%s' to TCP URL '%s'",
+			qUtf8Printable(originalUrl.toDisplayString()),
+			qUtf8Printable(url.toDisplayString()));
+		return url;
+	}
+#endif
+
+	return originalUrl;
+}
+
+QString Server::extractAutoJoinId(const QString &path)
+{
+	if(path.length() > 1) {
+		QRegularExpression idre("\\A/?([a-zA-Z0-9:-]{1,64})/?\\z");
+		QRegularExpressionMatch m = idre.match(path);
+		if(m.hasMatch()) {
+			return m.captured(1);
+		}
+	}
+	return QString();
 }
 
 Server::Server(QObject *parent)
@@ -85,7 +134,9 @@ void Server::login(LoginHandler *login)
 	m_loginstate = login;
 	m_loginstate->setParent(this);
 	m_loginstate->setServer(this);
-	connectToHost(login->url());
+	QUrl url = login->url();
+	emit initiatingConnection(url);
+	connectToHost(url);
 }
 
 void Server::logout()
@@ -102,7 +153,9 @@ int Server::uploadQueueBytes() const
 
 void Server::handleDisconnect()
 {
-	emit serverDisconnected(m_error, m_errorcode, m_localDisconnect);
+	emit serverDisconnected(
+		m_error, m_errorcode, m_localDisconnect,
+		!m_loginstate || m_loginstate->anyMessageReceived());
 }
 
 void Server::handleSocketStateChange(QAbstractSocket::SocketState state)
@@ -172,17 +225,38 @@ void Server::handleTimeout(qint64 idleTimeout)
 
 void Server::connectMessageQueue(MessageQueue *mq)
 {
-	connect(mq, &MessageQueue::messageAvailable, this, &Server::handleMessage);
-	connect(mq, &MessageQueue::bytesReceived, this, &Server::bytesReceived);
-	connect(mq, &MessageQueue::bytesSent, this, &Server::bytesSent);
-	connect(mq, &MessageQueue::badData, this, &Server::handleBadData);
-	connect(mq, &MessageQueue::readError, this, &Server::handleReadError);
-	connect(mq, &MessageQueue::writeError, this, &Server::handleWriteError);
-	connect(mq, &MessageQueue::timedOut, this, &Server::handleTimeout);
-	connect(mq, &MessageQueue::pingPong, this, &Server::lagMeasured);
+#ifdef __EMSCRIPTEN__
+	// AutoConnection doesn't work here in Emscripten.
+	Qt::ConnectionType connectionType = Qt::QueuedConnection;
+#else
+	Qt::ConnectionType connectionType = Qt::AutoConnection;
+#endif
+	connect(
+		mq, &MessageQueue::messageAvailable, this, &Server::handleMessage,
+		connectionType);
+	connect(
+		mq, &MessageQueue::bytesReceived, this, &Server::bytesReceived,
+		connectionType);
+	connect(
+		mq, &MessageQueue::bytesSent, this, &Server::bytesSent, connectionType);
+	connect(
+		mq, &MessageQueue::badData, this, &Server::handleBadData,
+		connectionType);
+	connect(
+		mq, &MessageQueue::readError, this, &Server::handleReadError,
+		connectionType);
+	connect(
+		mq, &MessageQueue::writeError, this, &Server::handleWriteError,
+		connectionType);
+	connect(
+		mq, &MessageQueue::timedOut, this, &Server::handleTimeout,
+		connectionType);
+	connect(
+		mq, &MessageQueue::pingPong, this, &Server::lagMeasured,
+		connectionType);
 	connect(
 		mq, &MessageQueue::gracefulDisconnect, this,
-		&Server::gracefullyDisconnecting);
+		&Server::gracefullyDisconnecting, connectionType);
 }
 
 void Server::handleMessage()

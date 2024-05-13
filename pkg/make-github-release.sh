@@ -49,6 +49,11 @@ check_args() {
     fi
 }
 
+run_gh() (
+    set -x
+    gh --repo "$GIT_REPO_SLUG" "$@"
+)
+
 check_args "$@"
 
 release_description="$(cat "$RELEASE_DESCRIPTION_FILE")"
@@ -83,8 +88,7 @@ if [[ $error -ne 0 ]]; then
 fi
 
 if [[ $CLOBBER_EXISTING == 'true' ]]; then
-    gh release delete \
-        --repo "$GIT_REPO_SLUG" --cleanup-tag --yes "$RELEASE_NAME" \
+    run_gh release delete --cleanup-tag --yes "$RELEASE_NAME" \
         || true
 fi
 
@@ -94,10 +98,16 @@ else
     prerelease_arg=
 fi
 
-gh release create \
-    --repo "$GIT_REPO_SLUG" \
+run_gh release create \
     --target "$TARGET_COMMIT" \
     --title "$RELEASE_NAME" \
     --notes "$release_description" \
+    --draft \
     $prerelease_arg \
-    "$RELEASE_NAME" "${assets[@]}"
+    "$RELEASE_NAME"
+
+for asset in "${assets[@]}"; do
+    run_gh release upload "$RELEASE_NAME" "$asset"
+done
+
+run_gh release edit "$RELEASE_NAME" --draft=false

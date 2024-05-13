@@ -88,7 +88,6 @@ class Document final : public QObject {
 				   sessionResetThresholdChanged)
 	Q_PROPERTY(double baseResetThreshold READ baseResetThreshold NOTIFY
 				   baseResetThresholdChanged)
-	Q_PROPERTY(QString roomcode READ roomcode NOTIFY sessionRoomcodeChanged)
 
 	Q_OBJECT
 public:
@@ -186,8 +185,6 @@ public:
 
 	bool isSessionOutOfSpace() const { return m_sessionOutOfSpace; }
 
-	QString roomcode() const { return m_roomcode; }
-
 	void setRecordOnConnect(const QString &filename)
 	{
 		m_recordOnConnect = filename;
@@ -202,7 +199,8 @@ signals:
 	void serverConnected(const QString &address, int port);
 	void serverLoggedIn(bool join, const QString &joinPassword);
 	void serverDisconnected(
-		const QString &message, const QString &errorcode, bool localDisconnect);
+		const QString &message, const QString &errorcode, bool localDisconnect,
+		bool anyMessageReceived);
 	void compatibilityModeChanged(bool compatibilityMode);
 
 	void canvasChanged(canvas::CanvasModel *canvas);
@@ -225,7 +223,6 @@ signals:
 	void sessionDeputiesChanged(bool deputies);
 	void sessionIdleChanged(int timeLimit, bool overridden, bool canOverride);
 	void sessionMaxUserCountChanged(int count);
-	void sessionRoomcodeChanged(const QString &code);
 	void sessionResetThresholdChanged(double threshold);
 	void baseResetThresholdChanged(double threshold);
 	void autoResetTooLarge(int maxSize);
@@ -254,7 +251,7 @@ public slots:
 	void sendResetSession(const net::MessageList &resetImage = {});
 	void sendResizeCanvas(int top, int right, int bottom, int left);
 	void sendUnban(int entryId);
-	void sendAnnounce(const QString &url, bool privateMode);
+	void sendAnnounce(const QString &url);
 	void sendUnannounce(const QString &url);
 	void sendTerminateSession(const QString &reason);
 	void sendCanvasBackground(const QColor &color);
@@ -330,7 +327,6 @@ private:
 	void setSessionIdleOverride(bool idleOverride);
 	void setSessionAllowIdleOverride(bool allowIdleOverride);
 	void setSessionOutOfSpace(bool outOfSpace);
-	void setRoomcode(const QString &roomcode);
 
 	bool copyFromLayer(int layer);
 	void fillBackground(QImage &img);
@@ -366,8 +362,6 @@ private:
 	bool m_saveInProgress;
 	bool m_wantCanvasHistoryDump;
 	QTimer *m_autosaveTimer;
-
-	QString m_roomcode;
 
 	bool m_sessionPersistent;
 	bool m_sessionClosed;

@@ -12,6 +12,7 @@
 #include "desktop/toolwidgets/lasersettings.h"
 #include "desktop/toolwidgets/selectionsettings.h"
 #include "desktop/toolwidgets/zoomsettings.h"
+#include "desktop/widgets/canvasframe.h"
 #include "desktop/widgets/viewstatus.h"
 #include "desktop/widgets/viewstatusbar.h"
 #include "libclient/document.h"
@@ -31,7 +32,7 @@ SceneWrapper::SceneWrapper(QWidget *parent)
 		m_scene, &CanvasScene::setUserMarkerPersistence);
 }
 
-QWidget *SceneWrapper::viewWidget() const
+QAbstractScrollArea *SceneWrapper::viewWidget() const
 {
 	return m_view;
 }
@@ -239,6 +240,16 @@ void SceneWrapper::connectActions(const Actions &actions)
 		&drawingboard::CanvasScene::setEvadeUserCursors);
 }
 
+void SceneWrapper::connectCanvasFrame(widgets::CanvasFrame *canvasFrame)
+{
+	connect(
+		m_view, &CanvasView::viewTransformed, canvasFrame,
+		&widgets::CanvasFrame::setTransform);
+	connect(
+		m_view, &CanvasView::viewRectChange, canvasFrame,
+		&widgets::CanvasFrame::setView);
+}
+
 void SceneWrapper::connectDocument(Document *doc)
 {
 	connect(m_view, &CanvasView::pointerMoved, doc, &Document::sendPointerMove);
@@ -398,6 +409,9 @@ void SceneWrapper::connectViewStatus(widgets::ViewStatus *viewStatus)
 	connect(
 		m_view, &CanvasView::viewTransformed, viewStatus,
 		&widgets::ViewStatus::setTransformation);
+	connect(
+		viewStatus, &widgets::ViewStatus::zoomStepped, m_view,
+		&CanvasView::zoomSteps);
 	connect(
 		viewStatus, &widgets::ViewStatus::zoomChanged, m_view,
 		&CanvasView::setZoom);

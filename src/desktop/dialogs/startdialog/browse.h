@@ -4,6 +4,7 @@
 #define DESKTOP_DIALOGS_STARTDIALOG_BROWSE_H
 
 #include "desktop/dialogs/startdialog/page.h"
+#include "libclient/utils/debouncetimer.h"
 #include <QHash>
 #include <QWidget>
 
@@ -61,10 +62,11 @@ private:
 	void refreshServer(const sessionlisting::ListServer &ls, const QUrl &url);
 
 	void updateJoinButton();
+	void updateColumnSizes();
 
 	QAction *makeCopySessionDataAction(const QString &text, int role);
 
-	bool canJoinIndex(const QModelIndex &index);
+	bool isSessionIndex(const QModelIndex &index);
 	bool isListingIndex(const QModelIndex &index);
 
 	QWidget *m_noListServers;
@@ -80,6 +82,7 @@ private:
 	QMenu *m_listingContextMenu;
 	QAction *m_joinAction;
 	QTimer *m_refreshTimer;
+	DebounceTimer m_updateColumnsDebounce;
 	qint64 m_lastRefresh = 0;
 	QHash<QString, sessionlisting::AnnouncementApiResponse *>
 		m_refreshesInProgress;

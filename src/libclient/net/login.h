@@ -152,6 +152,8 @@ public:
 	 */
 	Mode mode() const { return m_mode; }
 
+	bool anyMessageReceived() const { return m_messageReceived; }
+
 	/**
 	 * @brief Session URL
 	 *
@@ -445,6 +447,7 @@ private:
 		const QString &cmd, const QJsonArray &args = QJsonArray(),
 		const QJsonObject &kwargs = QJsonObject(), bool containsAvatar = false);
 
+	void setState(State state);
 	void expectNothing();
 	void expectHello(const ServerReply &msg);
 	void expectStartTls(const ServerReply &msg);
@@ -515,6 +518,7 @@ private:
 	State m_state;
 	State m_passwordState;
 	LoginSessionModel *m_sessions;
+	bool m_messageReceived = false;
 
 	QString m_selectedId;
 	QStringList m_sessionFlags;

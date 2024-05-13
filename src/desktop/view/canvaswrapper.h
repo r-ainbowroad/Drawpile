@@ -8,6 +8,7 @@
 class Document;
 class MainWindow;
 class QAction;
+class QAbstractScrollArea;
 class QWidget;
 
 namespace canvas {
@@ -32,6 +33,7 @@ class ToolController;
 }
 
 namespace widgets {
+class CanvasFrame;
 class ViewStatus;
 class ViewStatusBar;
 }
@@ -74,7 +76,7 @@ public:
 
 	virtual ~CanvasWrapper();
 
-	virtual QWidget *viewWidget() const = 0;
+	virtual QAbstractScrollArea *viewWidget() const = 0;
 
 	virtual bool isTabletEnabled() const = 0;
 	virtual bool isTouchScrollEnabled() const = 0;
@@ -117,6 +119,8 @@ public:
 	virtual void disposeScene() = 0;
 
 	virtual void connectActions(const Actions &actions) = 0;
+
+	virtual void connectCanvasFrame(widgets::CanvasFrame *canvasFrame) = 0;
 
 	virtual void connectDocument(Document *doc) = 0;
 

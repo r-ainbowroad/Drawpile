@@ -49,13 +49,13 @@ static constexpr auto CTRL_KEY = Qt::CTRL;
 #include "libclient/canvas/canvasmodel.h"
 #include "desktop/view/canvaswrapper.h"
 #include "desktop/view/lock.h"
+#include "desktop/widgets/canvasframe.h"
 #include "desktop/scene/selectionitem.h"
 #include "desktop/scene/toggleitem.h"
 #include "libclient/canvas/userlist.h"
 #include "libclient/canvas/paintengine.h"
 #include "libclient/canvas/documentmetadata.h"
 
-#include "desktop/utils/recents.h"
 #include "libshared/util/whatismyip.h"
 #include "cmake-config/config.h"
 #include "libclient/utils/images.h"
@@ -132,6 +132,12 @@ static constexpr auto CTRL_KEY = Qt::CTRL;
 #include "desktop/bundled/kis_tablet/kis_tablet_support_win.h"
 #endif
 
+#ifdef __EMSCRIPTEN__
+#	include "libclient/wasmsupport.h"
+#else
+#	include "desktop/utils/recents.h"
+#endif
+
 #ifdef DP_HAVE_BUILTIN_SERVER
 #	include "libclient/server/builtinserver.h"
 #endif
@@ -168,7 +174,9 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	  m_dumpPlaybackDialog(nullptr),
 	  m_sessionSettings(nullptr),
 	  m_serverLogDialog(nullptr),
+#ifndef __EMSCRIPTEN__
 	  m_recentMenu(nullptr),
+#endif
 	  m_lastLayerViewMode(nullptr),
 	  m_currentdoctools(nullptr),
 	  m_admintools(nullptr),
@@ -256,7 +264,9 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	m_canvasView =
 		view::CanvasWrapper::instantiate(dpApp().canvasImplementation(), this);
 	m_canvasView->setShowToggleItems(m_smallScreenMode);
-	m_splitter->addWidget(m_canvasView->viewWidget());
+
+	m_canvasFrame = new widgets::CanvasFrame(m_canvasView->viewWidget());
+	m_splitter->addWidget(m_canvasFrame);
 	m_splitter->setCollapsible(SPLITTER_WIDGET_IDX++, false);
 
 	// Create the chatbox
@@ -316,6 +326,7 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	// Tool dock connections
 	m_tempToolSwitchShortcut = new ShortcutDetector(this);
 
+	m_canvasView->connectCanvasFrame(m_canvasFrame);
 	m_canvasView->connectDocument(m_doc);
 	m_canvasView->connectMainWindow(this);
 	m_canvasView->connectNavigator(m_dockNavigator);
@@ -429,7 +440,6 @@ MainWindow::MainWindow(bool restoreWindowPosition, bool singleSession)
 	connect(m_doc, &Document::serverConnected, m_netstatus, &widgets::NetStatus::connectingToHost);
 	connect(m_doc->client(), &net::Client::serverDisconnecting, m_netstatus, &widgets::NetStatus::hostDisconnecting);
 	connect(m_doc, &Document::serverDisconnected, m_netstatus, &widgets::NetStatus::hostDisconnected);
-	connect(m_doc, &Document::sessionRoomcodeChanged, m_netstatus, &widgets::NetStatus::setRoomcode);
 	connect(m_sessionSettings, &dialogs::SessionSettingsDialog::joinPasswordChanged, m_netstatus, &widgets::NetStatus::setJoinPassword);
 	connect(m_doc, &Document::sessionPasswordChanged, m_netstatus, &widgets::NetStatus::setHaveJoinPassword);
 	connect(
@@ -630,8 +640,12 @@ void MainWindow::prepareWindowReplacement()
  */
 void MainWindow::addRecentFile(const QString& file)
 {
+#ifdef __EMSCRIPTEN__
+	Q_UNUSED(file);
+#else
 	utils::Recents &recents = dpApp().recents();
 	recents.addFile(file);
+#endif
 }
 
 /**
@@ -833,11 +847,8 @@ void MainWindow::readSettings(bool windowpos)
 
 	// Restore previously used window size and position
 	resize(settings.lastWindowSize());
-
 	if(windowpos) {
-		const auto pos = settings.lastWindowPosition();
-		if (dpApp().primaryScreen()->availableGeometry().contains(pos))
-			move(pos);
+		utils::moveIfOnScreen(this, settings.lastWindowPosition());
 	}
 
 	// Show self
@@ -878,10 +889,12 @@ void MainWindow::readSettings(bool windowpos)
 	// Customize shortcuts
 	settings.bindShortcuts(this, &MainWindow::loadShortcuts);
 
+#ifndef __EMSCRIPTEN__
 	// Restore recent files
 	if(!m_singleSession) {
 		dpApp().recents().bindFileMenu(m_recentMenu);
 	}
+#endif
 
 	connect(&m_saveWindowDebounce, &QTimer::timeout, this, &MainWindow::saveWindowState);
 	connect(&m_saveSplitterDebounce, &QTimer::timeout, this, &MainWindow::saveSplitterState);
@@ -935,7 +948,7 @@ void MainWindow::initSmallScreenState()
 	}
 	m_splitter->setHandleWidth(0);
 	m_chatbox->hide();
-	m_toolBarDraw->hide();
+	m_toolBarDraw->show();
 }
 
 void MainWindow::initDefaultDocks()
@@ -1198,7 +1211,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 				tr("Exit Drawpile"),
 				tr("You are still connected to a drawing session."),
 				QMessageBox::NoButton, this);
+#ifndef __EMSCRIPTEN__
 			box.setWindowModality(Qt::WindowModal);
+#endif
 
 			const QPushButton *exitbtn = box.addButton(tr("Exit anyway"),
 					QMessageBox::AcceptRole);
@@ -1224,7 +1239,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 			QMessageBox box(QMessageBox::Question, tr("Exit Drawpile"),
 					tr("There are unsaved changes. Save them before exiting?"),
 					QMessageBox::NoButton, this);
+#ifndef __EMSCRIPTEN__
 			box.setWindowModality(Qt::WindowModal);
+#endif
 			const QPushButton *savebtn = box.addButton(tr("Save"),
 					QMessageBox::AcceptRole);
 			box.addButton(tr("Discard"),
@@ -1330,11 +1347,12 @@ bool MainWindow::event(QEvent *event)
 
 dialogs::StartDialog *MainWindow::showStartDialog()
 {
-	dialogs::StartDialog *dlg = new dialogs::StartDialog{this};
+	dialogs::StartDialog *dlg =
+		new dialogs::StartDialog(m_smallScreenMode, this);
 	dlg->setObjectName(QStringLiteral("startdialog"));
 	dlg->setAttribute(Qt::WA_DeleteOnClose);
 	connectStartDialog(dlg);
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 	return dlg;
 }
 
@@ -1384,14 +1402,14 @@ void MainWindow::connectStartDialog(dialogs::StartDialog *dlg)
 	connections->add(connect(dlg, &dialogs::StartDialog::join, this, &MainWindow::joinSession));
 	connections->add(connect(dlg, &dialogs::StartDialog::host, this, &MainWindow::hostSession));
 	connections->add(connect(dlg, &dialogs::StartDialog::create, this, &MainWindow::newDocument));
-	connections->add(connect(m_doc, &Document::canvasChanged, dlg, std::bind(&MainWindow::closeStartDialog, this, dlg)));
-	connections->add(connect(m_doc, &Document::serverLoggedIn, dlg, std::bind(&MainWindow::closeStartDialog, this, dlg)));
+	connections->add(connect(m_doc, &Document::canvasChanged, dlg, std::bind(&MainWindow::closeStartDialog, this, dlg, true)));
+	connections->add(connect(m_doc, &Document::serverLoggedIn, dlg, std::bind(&MainWindow::closeStartDialog, this, dlg, _1)));
 	connections->add(connect(this, &MainWindow::hostSessionEnabled, dlg, &dialogs::StartDialog::hostPageEnabled));
 	connections->add(connect(this, &MainWindow::windowReplacementFailed, dlg, [dlg](MainWindow *win){
 		if(win) {
 			dlg->setParent(win, dlg->windowFlags());
 			win->connectStartDialog(dlg);
-			utils::showWindow(dlg);
+			utils::showWindow(dlg, win->shouldShowDialogMaximized());
 		} else {
 			dlg->deleteLater();
 		}
@@ -1417,11 +1435,15 @@ void MainWindow::setStartDialogActions(dialogs::StartDialog *dlg)
 	dlg->setActions(actions);
 }
 
-void MainWindow::closeStartDialog(dialogs::StartDialog *dlg)
+void MainWindow::closeStartDialog(dialogs::StartDialog *dlg, bool reparent)
 {
-	for(QDialog *child : dlg->findChildren<QDialog *>(QString(), Qt::FindDirectChildrenOnly)) {
-		child->setParent(this, child->windowFlags());
-		child->show();
+	if(reparent) {
+		for(QDialog *child : dlg->findChildren<QDialog *>(
+				QString(), Qt::FindDirectChildrenOnly)) {
+			child->setParent(this, child->windowFlags());
+			child->show();
+		}
+	} else {
 	}
 	dlg->close();
 }
@@ -1672,7 +1694,7 @@ void MainWindow::importOldAnimation()
 					canvasState, QString(), DP_SAVE_IMAGE_UNKNOWN, true);
 				dlg->deleteLater();
 			});
-		utils::showWindow(dlg);
+		utils::showWindow(dlg, shouldShowDialogMaximized());
 	} else {
 		prepareWindowReplacement();
 		bool newProcessStarted = dpApp().runInNewProcess(
@@ -1950,7 +1972,7 @@ void MainWindow::showFlipbook()
 			fp, &dialogs::Flipbook::exportFramesRequested, this,
 			&MainWindow::exportAnimationFramesWith);
 #endif
-		utils::showWindow(fp);
+		utils::showWindow(fp, shouldShowDialogMaximized());
 	}
 }
 
@@ -1993,7 +2015,7 @@ void MainWindow::showSystemInfo()
 		dlg->setObjectName("systeminfodialog");
 		dlg->setAttribute(Qt::WA_DeleteOnClose);
 	}
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 	dlg->activateWindow();
 	dlg->raise();
 }
@@ -2140,7 +2162,7 @@ void MainWindow::showBrushSettingsDialog()
 		dlg->setGlobalSmoothing(toolCtrl->globalSmoothing());
 	}
 
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 	dlg->activateWindow();
 	dlg->raise();
 }
@@ -2150,10 +2172,10 @@ void MainWindow::showBrushSettingsDialog()
  */
 dialogs::SettingsDialog *MainWindow::showSettings()
 {
-	dialogs::SettingsDialog *dlg =
-		new dialogs::SettingsDialog(m_singleSession, getStartDialogOrThis());
+	dialogs::SettingsDialog *dlg = new dialogs::SettingsDialog(
+		m_singleSession, m_smallScreenMode, getStartDialogOrThis());
 	dlg->setAttribute(Qt::WA_DeleteOnClose);
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 	return dlg;
 }
 
@@ -2176,9 +2198,11 @@ void MainWindow::hostSession(
 	QUrl address;
 
 	if(useremote) {
-		address = QUrl(
-			net::Server::addSchemeToUserSuppliedAddress(remoteAddress),
-			QUrl::TolerantMode);
+		address = net::Server::fixUpAddress(
+			QUrl(
+				net::Server::addSchemeToUserSuppliedAddress(remoteAddress),
+				QUrl::TolerantMode),
+			false);
 	} else {
 		address.setHost(WhatIsMyIp::guessLocalAddress());
 		address.setScheme(QStringLiteral("drawpile"));
@@ -2239,7 +2263,9 @@ void MainWindow::hostSession(
 			true, DP_ACL_STATE_RESET_IMAGE_SESSION_RESET_FLAGS));
 	}
 
-	utils::showWindow(new dialogs::LoginDialog(login, getStartDialogOrThis()));
+	utils::showWindow(
+		new dialogs::LoginDialog(login, getStartDialogOrThis()),
+		shouldShowDialogMaximized());
 
 	m_doc->client()->connectToServer(
 		settings.serverTimeout(), login, !useremote);
@@ -2312,12 +2338,14 @@ void MainWindow::leave()
 	leavebox->show();
 }
 
+#ifndef __EMSCRIPTEN__
 void MainWindow::checkForUpdates()
 {
 	dialogs::StartDialog *dlg = showStartDialog();
 	dlg->showPage(dialogs::StartDialog::Entry::Welcome);
 	dlg->checkForUpdates();
 }
+#endif
 
 void MainWindow::reportAbuse()
 {
@@ -2336,7 +2364,7 @@ void MainWindow::reportAbuse()
 		m_doc->sendAbuseReport(dlg->userId(), dlg->message());
 	});
 
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 }
 
 void MainWindow::tryToGainOp()
@@ -2387,7 +2415,7 @@ void MainWindow::resetSession()
 		dlg->setCanReset(false);
 	}
 
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 }
 
 void MainWindow::terminateSession()
@@ -2403,7 +2431,9 @@ void MainWindow::terminateSession()
 		dlg->setWindowTitle(tr("Terminate session"));
 		dlg->setLabelText(tr("Reason:"));
 		dlg->setOkButtonText(tr("Terminate"));
+#ifndef __EMSCRIPTEN__
 		dlg->setWindowModality(Qt::WindowModal);
+#endif
 		connect(
 			dlg, &QInputDialog::textValueSelected, m_doc,
 			&Document::sendTerminateSession);
@@ -2448,7 +2478,8 @@ void MainWindow::joinSession(const QUrl& url, const QString &autoRecordFile)
 	}
 
 	net::LoginHandler *login = new net::LoginHandler(
-			net::LoginHandler::Mode::Join, url, this);
+		net::LoginHandler::Mode::Join, net::Server::fixUpAddress(url, true),
+		this);
 	auto *dlg = new dialogs::LoginDialog(login, getStartDialogOrThis());
 	connect(m_doc, &Document::catchupProgress, dlg, &dialogs::LoginDialog::catchupProgress);
 	connect(m_doc, &Document::serverLoggedIn, dlg, &dialogs::LoginDialog::onLoginDone);
@@ -2481,7 +2512,9 @@ void MainWindow::onServerConnected()
 /**
  * Connection lost, so disable and enable some UI elements
  */
-void MainWindow::onServerDisconnected(const QString &message, const QString &errorcode, bool localDisconnect)
+void MainWindow::onServerDisconnected(
+	const QString &message, const QString &errorcode, bool localDisconnect,
+	bool anyMessageReceived)
 {
 	canvas::CanvasModel *canvas = m_doc->canvas();
 	emit hostSessionEnabled(canvas != nullptr);
@@ -2512,9 +2545,23 @@ void MainWindow::onServerDisconnected(const QString &message, const QString &err
 		QString name = QStringLiteral("disconnectederrormessagebox");
 		QMessageBox *msgbox = findChild<QMessageBox *>(name);
 		if(!msgbox) {
-			msgbox = utils::showWarning(
-				getStartDialogOrThis(), tr("Disconnected"),
-				tr("Could not connect to server"));
+			QString title;
+			QString description;
+			if(anyMessageReceived) {
+				title = tr("Disconnected");
+				description = tr("You've been disconnected from the server.");
+			} else {
+				title = tr("Connection Failed");
+				description =
+					tr("Could not establish a connection to the server.");
+#ifdef __EMSCRIPTEN__
+				browser::intuitFailedConnectionReason(
+					description, m_doc->client()->connectionUrl());
+#endif
+			}
+
+			msgbox =
+				utils::showWarning(getStartDialogOrThis(), title, description);
 			msgbox->setObjectName(name);
 		}
 
@@ -2881,7 +2928,6 @@ void MainWindow::handleToggleAction(int action)
 		QPair<QWidget *, int> dockActions[] = {
 			{m_dockToolSettings, int(Action::Left)},
 			{m_dockBrushPalette, int(Action::Left)},
-			{m_toolBarDraw, int(Action::Left)},
 			{m_dockTimeline, int(Action::Top)},
 			{m_dockOnionSkins, int(Action::Top)},
 			{m_dockNavigator, int(Action::None)},
@@ -3242,7 +3288,7 @@ void MainWindow::resizeCanvas()
 			m_doc->sendResizeCanvas(r.top, r.right, r.bottom, r.left);
 		}
 	});
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 }
 
 static QIcon makeBackgroundColorIcon(QColor &color)
@@ -3303,7 +3349,7 @@ void MainWindow::changeCanvasBackground()
 	color_widgets::ColorDialog *dlg = dialogs::newDeleteOnCloseColorDialog(
 		m_doc->canvas()->paintEngine()->historyBackgroundColor(), this);
 	connect(dlg, &color_widgets::ColorDialog::colorSelected, m_doc, &Document::sendCanvasBackground);
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 }
 
 void MainWindow::changeLocalCanvasBackground()
@@ -3324,7 +3370,7 @@ void MainWindow::changeLocalCanvasBackground()
 	connect(
 		dlg, &color_widgets::ColorDialog::colorSelected, paintEngine,
 		&canvas::PaintEngine::setLocalBackgroundColor);
-	utils::showWindow(dlg);
+	utils::showWindow(dlg, shouldShowDialogMaximized());
 }
 
 void MainWindow::clearLocalCanvasBackground()
@@ -3720,10 +3766,12 @@ void MainWindow::setupActions()
 	QMenu *filemenu = menuBar()->addMenu(tr("&File"));
 	filemenu->addAction(newdocument);
 	filemenu->addAction(open);
+#ifndef __EMSCRIPTEN__
 	if(!m_singleSession) {
 		m_recentMenu = filemenu->addMenu(tr("Open &Recent"));
 		m_recentMenu->setIcon(QIcon::fromTheme("document-open-recent"));
 	}
+#endif
 	filemenu->addSeparator();
 
 #ifdef __EMSCRIPTEN__
@@ -3780,6 +3828,7 @@ void MainWindow::setupActions()
 	m_toolBarFile->addAction(record);
 #endif
 
+#ifndef __EMSCRIPTEN__
 	if(!m_singleSession) {
 		connect(m_recentMenu, &QMenu::triggered, this, [this](QAction *action) {
 			QVariant filepath = action->property("filepath");
@@ -3791,6 +3840,7 @@ void MainWindow::setupActions()
 			}
 		});
 	}
+#endif
 
 	//
 	// Edit menu
@@ -4060,6 +4110,7 @@ void MainWindow::setupActions()
 	QAction *evadeusercursors = makeAction("evadeusercursors", tr("Hide From Cursor")).noDefaultShortcut().checked().remembered();
 	QAction *showlasers = makeAction("showlasers", tr("Show La&ser Trails")).noDefaultShortcut().checked().remembered();
 	QAction *showgrid = makeAction("showgrid", tr("Show Pixel &Grid")).noDefaultShortcut().checked().remembered();
+	QAction *showrulers = makeAction("showrulers", tr("Show &Rulers")).noDefaultShortcut().checkable().remembered();
 
 #ifndef SINGLE_MAIN_WINDOW
 	QAction *fullscreen = makeAction("fullscreen", tr("&Full Screen")).shortcut(QKeySequence::FullScreen).checkable();
@@ -4109,6 +4160,10 @@ void MainWindow::setupActions()
 		}
 	});
 	connect(m_chatbox, &widgets::ChatBox::muteChanged, this, &MainWindow::setNotificationsMuted);
+
+	connect(
+		showrulers, &QAction::toggled, m_canvasFrame,
+		&widgets::CanvasFrame::setShowRulers);
 
 	m_canvasView->connectActions(
 		{moveleft, moveright, moveup, movedown, zoomin, zoomout, zoomorig,
@@ -4213,6 +4268,7 @@ void MainWindow::setupActions()
 	viewmenu->addAction(showannotations);
 
 	viewmenu->addAction(showgrid);
+	viewmenu->addAction(showrulers);
 
 #ifndef SINGLE_MAIN_WINDOW
 	viewmenu->addSeparator();
@@ -4378,11 +4434,11 @@ void MainWindow::setupActions()
 	connect(browse, &QAction::triggered, this, &MainWindow::browse);
 	connect(logout, &QAction::triggered, this, &MainWindow::leave);
 	connect(sessionSettings, &QAction::triggered, m_sessionSettings, [this](){
-		utils::showWindow(m_sessionSettings);
+		utils::showWindow(m_sessionSettings, shouldShowDialogMaximized());
 	});
 	connect(sessionUndoDepthLimit, &QAction::triggered, this, &MainWindow::changeUndoDepthLimit);
 	connect(serverlog, &QAction::triggered, m_serverLogDialog, [this](){
-		utils::showWindow(m_serverLogDialog);
+		utils::showWindow(m_serverLogDialog, shouldShowDialogMaximized());
 	});
 	connect(reportabuse, &QAction::triggered, this, &MainWindow::reportAbuse);
 	connect(gainop, &QAction::triggered, this, &MainWindow::tryToGainOp);
@@ -4572,16 +4628,20 @@ void MainWindow::setupActions()
 	QAction *showlogfile = makeAction("showlogfile", tr("Log File")).noDefaultShortcut();
 	QAction *about = makeAction("dpabout", tr("&About Drawpile")).menuRole(QAction::AboutRole).noDefaultShortcut();
 	QAction *aboutqt = makeAction("aboutqt", tr("About &Qt")).menuRole(QAction::AboutQtRole).noDefaultShortcut();
+#ifndef __EMSCRIPTEN__
 	QAction *versioncheck = makeAction("versioncheck", tr("Check For Updates")).noDefaultShortcut();
+#endif
 
 	connect(homepage, &QAction::triggered, &MainWindow::homepage);
 	connect(about, &QAction::triggered, &MainWindow::about);
 	connect(aboutqt, &QAction::triggered, &QApplication::aboutQt);
 
+#ifndef __EMSCRIPTEN__
 	connect(
 		versioncheck, &QAction::triggered, this, &MainWindow::checkForUpdates);
+#endif
 
-	connect(tablettester, &QAction::triggered, []() {
+	connect(tablettester, &QAction::triggered, [this]() {
 		dialogs::TabletTestDialog *ttd=nullptr;
 		// Check if dialog is already open
 		for(QWidget *toplevel : qApp->topLevelWidgets()) {
@@ -4593,11 +4653,11 @@ void MainWindow::setupActions()
 			ttd = new dialogs::TabletTestDialog;
 			ttd->setAttribute(Qt::WA_DeleteOnClose);
 		}
-		utils::showWindow(ttd);
+		utils::showWindow(ttd, shouldShowDialogMaximized());
 		ttd->raise();
 	});
 
-	connect(touchtester, &QAction::triggered, [] {
+	connect(touchtester, &QAction::triggered, [this] {
 		dialogs::TouchTestDialog *ttd = nullptr;
 		for(QWidget *toplevel : qApp->topLevelWidgets()) {
 			ttd = qobject_cast<dialogs::TouchTestDialog*>(toplevel);
@@ -4609,7 +4669,7 @@ void MainWindow::setupActions()
 			ttd = new dialogs::TouchTestDialog;
 			ttd->setAttribute(Qt::WA_DeleteOnClose);
 		}
-		utils::showWindow(ttd);
+		utils::showWindow(ttd, shouldShowDialogMaximized());
 		ttd->raise();
 	});
 
@@ -4659,7 +4719,9 @@ void MainWindow::setupActions()
 	helpmenu->addAction(about);
 	helpmenu->addAction(aboutqt);
 	helpmenu->addSeparator();
+#ifndef __EMSCRIPTEN__
 	helpmenu->addAction(versioncheck);
+#endif
 
 	// Brush slot shortcuts
 
@@ -4746,7 +4808,6 @@ void MainWindow::setupActions()
 		singleGroup->addAction(importOldAnimation);
 		singleGroup->addAction(host);
 		singleGroup->addAction(browse);
-		singleGroup->addAction(versioncheck);
 	}
 
 	updateInterfaceModeActions();
@@ -5001,11 +5062,10 @@ void MainWindow::switchInterfaceMode(bool smallScreenMode)
 		}
 		removeToolBar(m_toolBarFile);
 		removeToolBar(m_toolBarEdit);
-		removeToolBar(m_toolBarDraw);
 		m_splitter->setHandleWidth(0);
 		m_chatbox->setSmallScreenMode(true);
 		m_chatbox->hide();
-		m_toolBarDraw->hide();
+		m_toolBarDraw->show();
 		m_viewStatusBar->show();
 		m_viewstatus->setHidden(true);
 		setFreezeDocks(true);
@@ -5053,4 +5113,13 @@ void MainWindow::switchInterfaceMode(bool smallScreenMode)
 	m_canvasView->setShowToggleItems(smallScreenMode);
 	updateInterfaceModeActions();
 	reenableUpdates();
+}
+
+bool MainWindow::shouldShowDialogMaximized() const
+{
+#ifdef SINGLE_MAIN_WINDOW
+	return m_smallScreenMode;
+#else
+	return m_smallScreenMode && isMaximized();
+#endif
 }

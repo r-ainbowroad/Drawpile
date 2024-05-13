@@ -36,6 +36,7 @@ class MainActions;
 class ActionBuilder;
 
 namespace widgets {
+	class CanvasFrame;
 	class DualColorButton;
 	class NetStatus;
 	class ChatBox;
@@ -158,7 +159,9 @@ public slots:
 	void reconnect();
 	void browse();
 	void leave();
+#ifndef __EMSCRIPTEN__
 	void checkForUpdates();
+#endif
 
 	void toggleFullscreen();
 	void setShowAnnotations(bool show);
@@ -209,7 +212,9 @@ private slots:
 
 	void onServerConnected();
 	void onServerLogin(bool join, const QString &joinPassword);
-	void onServerDisconnected(const QString &message, const QString &errorcode, bool localDisconnect);
+	void onServerDisconnected(
+		const QString &message, const QString &errorcode, bool localDisconnect,
+		bool anyMessageReceived);
 	void onCompatibilityModeChanged(bool compatibilityMode);
 	void onNsfmChanged(bool nsfm);
 
@@ -289,7 +294,7 @@ private:
 
 	void connectStartDialog(dialogs::StartDialog *dlg);
 	void setStartDialogActions(dialogs::StartDialog *dlg);
-	void closeStartDialog(dialogs::StartDialog *dlg);
+	void closeStartDialog(dialogs::StartDialog *dlg, bool join);
 	QWidget *getStartDialogOrThis();
 
 	void exportAnimation(
@@ -338,6 +343,7 @@ private:
 	bool shouldUseSmallScreenMode(const desktop::settings::Settings &settings);
 	static bool isSmallScreenModeSize(const QSize &s);
 	void switchInterfaceMode(bool smallScreenMode);
+	bool shouldShowDialogMaximized() const;
 
 	bool m_singleSession;
 	bool m_smallScreenMode;
@@ -373,6 +379,7 @@ private:
 	widgets::DualColorButton *m_dualColorButton;
 
 	view::Lock *m_viewLock;
+	widgets::CanvasFrame *m_canvasFrame;
 	view::CanvasWrapper *m_canvasView;
 
 	widgets::ViewStatusBar *m_viewStatusBar;
@@ -387,7 +394,9 @@ private:
 	dialogs::ServerLogDialog *m_serverLogDialog;
 	dialogs::Flipbook::State m_flipbookState;
 
+#ifndef __EMSCRIPTEN__
 	QMenu *m_recentMenu;
+#endif
 	QAction *m_lastLayerViewMode;
 
 	QActionGroup *m_currentdoctools; // general tools that require no special permissions

@@ -180,8 +180,6 @@ target_sources(dpclient PRIVATE
 	utils/listservermodel.h
 	utils/logging.cpp
 	utils/logging.h
-	utils/news.cpp
-	utils/news.h
 	utils/sessionfilterproxymodel.cpp
 	utils/sessionfilterproxymodel.h
 	utils/sessionidvalidator.cpp
@@ -192,6 +190,7 @@ target_sources(dpclient PRIVATE
 	utils/statedatabase.h
 	utils/usernamevalidator.cpp
 	utils/usernamevalidator.h
+	utils/wasmpersistence.h
 )
 
 if(ANDROID OR EMSCRIPTEN)
@@ -210,7 +209,13 @@ else()
 endif()
 
 if(EMSCRIPTEN)
-	target_sources(dpclient PRIVATE wasmsupport.cpp wasmsupport.h)
+	target_sources(dpclient PRIVATE
+		wasmsupport.cpp
+		wasmsupport.h
+		utils/wasmpersistence.cpp
+	)
+else()
+	target_sources(dpclient PRIVATE utils/news.cpp utils/news.h)
 endif()
 
 if(HAVE_TCPSOCKETS)

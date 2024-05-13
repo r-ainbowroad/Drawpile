@@ -97,7 +97,6 @@ SETTING(fontSize                  , FontSize                  , "settings/fontSi
 SETTING(globalPressureCurve       , GlobalPressureCurve       , "settings/input/globalcurve"            , GLOBAL_PRESSURE_CURVE_DEFAULT)
 SETTING(hostEnableAdvanced        , HostEnableAdvanced        , "history/hostenableadvanced"            , false)
 SETTING(ignoreCarrierGradeNat     , IgnoreCarrierGradeNat     , "history/cgnalert"                      , false)
-SETTING(ignoreZeroPressureInputs  , IgnoreZeroPressureInputs  , "settings/ignorezeropressureinputs"     , true)
 SETTING(inputPresets              , InputPresets              , "inputpresets"                          , QVector<QVariantMap>())
 SETTING(insecurePasswordStorage   , InsecurePasswordStorage   , "settings/insecurepasswordstorage"      , false)
 SETTING_GETSET_V(
@@ -139,6 +138,7 @@ SETTING(lastWindowViewState       , LastWindowViewState       , "window/viewstat
 SETTING(layouts                   , Layouts                   , "layouts"                               , QVector<QVariantMap>())
 SETTING(mentionEnabled            , MentionEnabled            , "settings/mentions/enabled"             , true)
 SETTING(mentionTriggerList        , MentionTriggerList        , "settings/mentions/triggerlist"         , QString())
+SETTING(mouseSmoothing            , MouseSmoothing            , "settings/input/mousesmoothing"         , false)
 SETTING(navigatorRealtime         , NavigatorRealtime         , "navigator/realtime"                    , false)
 SETTING(navigatorShowCursors      , NavigatorShowCursors      , "navigator/showcursors"                 , true)
 SETTING_GETSET(newCanvasBackColor , NewCanvasBackColor        , "history/newcolor"                      , (QColor(Qt::white)),

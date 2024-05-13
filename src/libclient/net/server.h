@@ -34,6 +34,8 @@ public:
 	static Server *make(const QUrl &url, int timeoutSecs, QObject *parent);
 
 	static QString addSchemeToUserSuppliedAddress(const QString &remoteAddress);
+	static QUrl fixUpAddress(const QUrl &originalUrl, bool join);
+	static QString extractAutoJoinId(const QString &path);
 
 	explicit Server(QObject *parent);
 
@@ -106,6 +108,8 @@ public:
 	void artificialDisconnect() { abortConnection(); }
 
 signals:
+	void initiatingConnection(const QUrl &url);
+
 	void loggedIn(
 		const QUrl &url, uint8_t userid, bool join, bool auth,
 		const QStringList &userFlags, bool hasAutoreset, bool compatibilityMode,
@@ -117,7 +121,8 @@ signals:
 		MessageQueue::GracefulDisconnect, const QString &message);
 
 	void serverDisconnected(
-		const QString &message, const QString &errorcode, bool localDisconnect);
+		const QString &message, const QString &errorcode, bool localDisconnect,
+		bool anyMessageReceived);
 
 	void messagesReceived(int count, net::Message *msgs);
 	void bytesReceived(int);

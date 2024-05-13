@@ -381,14 +381,8 @@ void Document::onSessionConfChanged(const QJsonObject &config)
 		QString jc;
 		for(auto v : config["announcements"].toArray()) {
 			const QJsonObject o = v.toObject();
-			const net::Announcement a{
-				o["url"].toString(), o["roomcode"].toString(),
-				o["private"].toBool()};
-			m_announcementlist->addAnnouncement(a);
-			if(!a.roomcode.isEmpty())
-				jc = a.roomcode;
+			m_announcementlist->addAnnouncement(o["url"].toString());
 		}
-		setRoomcode(jc);
 	}
 
 	if(config.contains("auth")) {
@@ -583,14 +577,6 @@ void Document::setSessionOutOfSpace(bool outOfSpace)
 	if(outOfSpace != m_sessionOutOfSpace) {
 		m_sessionOutOfSpace = outOfSpace;
 		emit sessionOutOfSpaceChanged(outOfSpace);
-	}
-}
-
-void Document::setRoomcode(const QString &roomcode)
-{
-	if(m_roomcode != roomcode) {
-		m_roomcode = roomcode;
-		emit sessionRoomcodeChanged(roomcode);
 	}
 }
 
@@ -882,9 +868,9 @@ void Document::sendUnban(int entryId)
 	m_client->sendMessage(net::ServerCommand::makeUnban(entryId));
 }
 
-void Document::sendAnnounce(const QString &url, bool privateMode)
+void Document::sendAnnounce(const QString &url)
 {
-	m_client->sendMessage(net::ServerCommand::makeAnnounce(url, privateMode));
+	m_client->sendMessage(net::ServerCommand::makeAnnounce(url));
 }
 
 void Document::sendUnannounce(const QString &url)

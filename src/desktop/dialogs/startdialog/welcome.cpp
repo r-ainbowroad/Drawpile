@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 #include "desktop/dialogs/startdialog/welcome.h"
 #include "desktop/main.h"
 #include "desktop/utils/widgetutils.h"
-#include "libclient/utils/news.h"
 #include <QDesktopServices>
 #include <QTextBrowser>
 #include <QVBoxLayout>
+#ifdef __EMSCRIPTEN__
+#	include "libclient/wasmsupport.h"
+#else
+#	include "libclient/utils/news.h"
+#endif
 
 namespace dialogs {
 namespace startdialog {
@@ -29,9 +32,29 @@ Welcome::Welcome(QWidget *parent)
 
 void Welcome::activate()
 {
+#ifndef __EMSCRIPTEN__
 	dpApp().settings().setWelcomePageShown(true);
+#endif
 	emit showButtons();
 }
+
+#ifdef __EMSCRIPTEN__
+
+void Welcome::showStandaloneText()
+{
+	QString text = browser::getWelcomeMessage();
+	m_browser->setText(
+		text.isEmpty()
+			? QStringLiteral("<h1>%1</h1><p style=\"font-size:large;\">%2</p>")
+				  .arg(
+					  tr("Standalone Mode"),
+					  tr("You are running the web browser version of Drawpile "
+						 "in standalone mode. It will <strong>not</strong> "
+						 "automatically save what you draw, so save often!"))
+			: text);
+}
+
+#else
 
 void Welcome::showFirstStartText()
 {
@@ -67,6 +90,8 @@ void Welcome::setNews(const QString &content)
 			"<table><tr><td style=\"padding:4px;\">%1</td></tr></table>")
 			.arg(content));
 }
+
+#endif
 
 void Welcome::linkClicked(const QUrl &url)
 {

@@ -13,6 +13,7 @@
 #include "libclient/utils/sessionfilterproxymodel.h"
 #include "libclient/utils/statedatabase.h"
 #include "libclient/utils/usernamevalidator.h"
+#include "libclient/utils/wasmpersistence.h"
 #include "ui_logindialog.h"
 #include <QAction>
 #include <QCryptographicHash>
@@ -255,6 +256,7 @@ struct LoginDialog::Private {
 
 	void saveGuest(const QString &username)
 	{
+		DRAWPILE_FS_PERSIST_SCOPE(scopedFsSync);
 		utils::StateDatabase &state = dpApp().state();
 		state.put(LAST_GUEST_NAME_KEY, username);
 		if(avatarFilename.isEmpty()) {
@@ -642,6 +644,30 @@ LoginDialog::LoginDialog(net::LoginHandler *login, QWidget *parent)
 LoginDialog::~LoginDialog()
 {
 	delete d;
+}
+
+void LoginDialog::showJoinDenyMessageBox(
+	QWidget *parent, const QStringList &reasons, const QIcon &icon)
+{
+	QString text =
+		QStringLiteral("<p>%1</p><ul>")
+			.arg(tr("You can't join this session because:").toHtmlEscaped());
+	if(reasons.isEmpty()) {
+		text.append(QStringLiteral("<li>%1</li>")
+						.arg(tr("Unknown reason.").toHtmlEscaped()));
+	} else {
+		for(const QString &reason : reasons) {
+			text.append(
+				QStringLiteral("<li>%1</li>").arg(reason.toHtmlEscaped()));
+		}
+	}
+	text.append(QStringLiteral("</ul>"));
+	QMessageBox *msgbox =
+		utils::makeWarning(parent, tr("Can't join session"), text);
+	msgbox->setTextFormat(Qt::RichText);
+	msgbox->setIconPixmap(
+		icon.pixmap(parent->style()->pixelMetric(QStyle::PM_LargeIconSize)));
+	msgbox->show();
 }
 
 void LoginDialog::updateOkButtonEnabled()
@@ -1287,28 +1313,12 @@ void LoginDialog::onOkClicked()
 				i.data(net::LoginSessionModel::TitleRole).toString(),
 				i.data(net::LoginSessionModel::NsfmRole).toBool(), false);
 		} else {
-			QString text = QStringLiteral("<p>%1</p><ul>")
-							   .arg(tr("You can't join this session because:")
-										.toHtmlEscaped());
 			QStringList reasons =
 				i.data(net::LoginSessionModel::JoinDenyReasonsRole)
 					.toStringList();
-			if(reasons.isEmpty()) {
-				reasons.append(tr("Unknown reason."));
-			}
-			for(QString &reason : reasons) {
-				text.append(
-					QStringLiteral("<li>%1</li>").arg(reason.toHtmlEscaped()));
-			}
-			text.append(QStringLiteral("</ul>"));
-			QMessageBox *msgbox =
-				utils::makeWarning(this, tr("Can't join session"), text);
-			msgbox->setTextFormat(Qt::RichText);
-			msgbox->setIconPixmap(
-				i.data(net ::LoginSessionModel::JoinDenyIcon)
-					.value<QIcon>()
-					.pixmap(style()->pixelMetric(QStyle::PM_LargeIconSize)));
-			msgbox->show();
+			QIcon icon =
+				i.data(net ::LoginSessionModel::JoinDenyIcon).value<QIcon>();
+			showJoinDenyMessageBox(this, reasons, icon);
 		}
 		break;
 	}

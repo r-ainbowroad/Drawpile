@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 #ifndef DESKTOP_DIALOGS_STARTDIALOG_H
 #define DESKTOP_DIALOGS_STARTDIALOG_H
-
-#include "libclient/utils/news.h"
 #include <QDialog>
 #include <QVector>
+#ifndef __EMSCRIPTEN__
+#	include "libclient/utils/news.h"
+#endif
 
 class QAbstractButton;
 class QAction;
@@ -33,7 +33,9 @@ public:
 		Browse,
 		Host,
 		Create,
+#ifndef __EMSCRIPTEN__
 		Recent,
+#endif
 		Open,
 		Layouts,
 		Preferences,
@@ -46,7 +48,7 @@ public:
 		const QAction *entries[Entry::Count];
 	};
 
-	StartDialog(QWidget *parent = nullptr);
+	StartDialog(bool smallScreenMode, QWidget *parent = nullptr);
 
 	void setActions(const Actions &actions);
 
@@ -55,7 +57,9 @@ public:
 	void autoJoin(const QUrl &url, const QString &autoRecordPath);
 
 public slots:
+#ifndef __EMSCRIPTEN__
 	void checkForUpdates();
+#endif
 
 signals:
 	void openFile();
@@ -79,7 +83,9 @@ private slots:
 	void addListServer();
 	void addListServerUrl(const QUrl &url);
 	void toggleRecording(bool checked);
+#ifndef __EMSCRIPTEN__
 	void updateCheckForUpdatesButton(bool inProgress);
+#endif
 	void hideLinks();
 	void showWelcomeButtons();
 	void showJoinButtons();
@@ -94,8 +100,10 @@ private slots:
 		bool nsfm, const QString &announcementUrl,
 		const QString &remoteAddress);
 	void rememberLastPage(int i);
+#ifndef __EMSCRIPTEN__
 	void initialUpdateDelayFinished();
 	void setUpdate(const utils::News::Update &update);
+#endif
 
 private:
 	static constexpr char ENTRY_PROPERTY_KEY[] = "startdialogentry";
@@ -109,13 +117,17 @@ private:
 
 	static void addRecentHost(const QUrl &url, bool join);
 
+#ifndef __EMSCRIPTEN__
 	startdialog::UpdateNotice *m_updateNotice;
+#endif
 	QStackedWidget *m_stack;
 	QFrame *m_linksSeparator;
 	startdialog::Links *m_links;
 	QAbstractButton *m_addServerButton;
 	QAbstractButton *m_recordButton;
+#ifndef __EMSCRIPTEN__
 	QAbstractButton *m_checkForUpdatesButton;
+#endif
 	QAbstractButton *m_okButton;
 	QAbstractButton *m_cancelButton;
 	QAbstractButton *m_closeButton;
@@ -123,9 +135,11 @@ private:
 	QAbstractButton *m_buttons[Entry::Count];
 	QVector<QShortcut *> m_shortcuts;
 	QString m_recordingFilename;
+#ifndef __EMSCRIPTEN__
 	QTimer *m_initialUpdateDelayTimer;
 	utils::News m_news;
 	utils::News::Update m_update = utils::News::Update::invalid();
+#endif
 };
 
 }

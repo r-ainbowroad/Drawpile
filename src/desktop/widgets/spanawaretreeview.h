@@ -8,9 +8,9 @@
 #include <QVector>
 
 #ifdef DESIGNER_PLUGIN
-#include <QtUiPlugin/QDesignerExportWidget>
+#	include <QtUiPlugin/QDesignerExportWidget>
 #else
-#define QDESIGNER_WIDGET_EXPORT
+#	define QDESIGNER_WIDGET_EXPORT
 #endif
 
 class QModelIndex;
@@ -18,16 +18,27 @@ class QModelIndex;
 namespace widgets {
 
 class QDESIGNER_WIDGET_EXPORT SpanAwareTreeView final : public QTreeView {
+	Q_OBJECT
 public:
 	using QTreeView::QTreeView;
 	void reset() override;
 
+signals:
+	void verticalScrollBarVisibilityChanged();
+
 protected:
-	void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles = QVector<int>()) override;
+	void dataChanged(
+		const QModelIndex &topLeft, const QModelIndex &bottomRight,
+		const QVector<int> &roles = QVector<int>()) override;
 	void rowsInserted(const QModelIndex &parent, int start, int end) override;
+	void updateGeometries() override;
+    void verticalScrollbarValueChanged(int value) override;
 
 private:
 	void setAllSpans(const QModelIndex &index);
+	void checkVerticalScrollBarVisibility();
+
+	bool m_verticalScrollBarVisible = false;
 };
 
 } // namespace widgets

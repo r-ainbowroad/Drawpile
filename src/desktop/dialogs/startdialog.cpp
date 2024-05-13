@@ -9,8 +9,6 @@
 #include "desktop/dialogs/startdialog/join.h"
 #include "desktop/dialogs/startdialog/links.h"
 #include "desktop/dialogs/startdialog/page.h"
-#include "desktop/dialogs/startdialog/recent.h"
-#include "desktop/dialogs/startdialog/updatenotice.h"
 #include "desktop/dialogs/startdialog/welcome.h"
 #include "desktop/filewrangler.h"
 #include "desktop/main.h"
@@ -38,6 +36,10 @@
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <functional>
+#ifndef __EMSCRIPTEN__
+#	include "desktop/dialogs/startdialog/recent.h"
+#	include "desktop/dialogs/startdialog/updatenotice.h"
+#endif
 
 namespace dialogs {
 
@@ -62,33 +64,54 @@ struct LinkDefinition {
 
 }
 
-StartDialog::StartDialog(QWidget *parent)
+StartDialog::StartDialog(bool smallScreenMode, QWidget *parent)
 	: QDialog{parent, WINDOW_HINTS}
+#ifndef __EMSCRIPTEN__
 	, m_initialUpdateDelayTimer{new QTimer{this}}
 	, m_news{dpApp().state(), this}
+#endif
 {
 	setWindowTitle(tr("Start"));
 	setWindowModality(Qt::WindowModal);
+
+#ifdef Q_OS_MACOS
+	Q_UNUSED(smallScreenMode);
+	bool vertical = false;
+	bool menuFirst = true;
+#elif defined(Q_OS_ANDROID)
+	Q_UNUSED(smallScreenMode);
+	bool vertical = false;
+	bool menuFirst = false;
+#else
+	bool vertical = !smallScreenMode;
+	bool menuFirst = !smallScreenMode;
+#endif
 
 	QVBoxLayout *layout = new QVBoxLayout;
 	layout->setContentsMargins(0, 0, 0, 0);
 	layout->setSpacing(0);
 	setLayout(layout);
 
+#ifndef __EMSCRIPTEN__
 	m_updateNotice = new startdialog::UpdateNotice;
 	layout->addWidget(m_updateNotice);
+#endif
 
-	QHBoxLayout *mainLayout = new QHBoxLayout;
+	QBoxLayout *mainLayout = new QBoxLayout(
+		vertical ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
 	mainLayout->setContentsMargins(0, 0, 0, 0);
 	mainLayout->setSpacing(0);
 	layout->addLayout(mainLayout);
 
 	QWidget *menu = new QWidget;
-	menu->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::MinimumExpanding);
+	menu->setSizePolicy(
+		vertical ? QSizePolicy::Fixed : QSizePolicy::MinimumExpanding,
+		QSizePolicy::MinimumExpanding);
 	menu->setBackgroundRole(QPalette::Midlight);
 	menu->setAutoFillBackground(true);
 
-	QVBoxLayout *menuLayout = new QVBoxLayout;
+	QBoxLayout *menuLayout = new QBoxLayout(
+		vertical ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
 	menu->setLayout(menuLayout);
 	int menuMargin = style()->pixelMetric(QStyle::PM_ToolBarFrameWidth) +
 					 style()->pixelMetric(QStyle::PM_ToolBarItemMargin);
@@ -98,18 +121,21 @@ StartDialog::StartDialog(QWidget *parent)
 
 	QScrollArea *menuScroll = new QScrollArea;
 	utils::bindKineticScrollingWith(
-		menuScroll, Qt::ScrollBarAlwaysOff, Qt::ScrollBarAsNeeded);
+		menuScroll, vertical ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded,
+		vertical ? Qt::ScrollBarAsNeeded : Qt ::ScrollBarAlwaysOff);
 	menuScroll->setContentsMargins(0, 0, 0, 0);
 	menuScroll->setWidgetResizable(true);
 	menuScroll->setWidget(menu);
-	mainLayout->addWidget(menuScroll);
+	mainLayout->insertWidget(menuFirst ? mainLayout->count() : 0, menuScroll);
 
 	startdialog::Welcome *welcomePage = new startdialog::Welcome{this};
 	startdialog::Join *joinPage = new startdialog::Join{this};
 	startdialog::Browse *browsePage = new startdialog::Browse{this};
 	startdialog::Host *hostPage = new startdialog::Host{this};
 	startdialog::Create *createPage = new startdialog::Create{this};
+#ifndef __EMSCRIPTEN__
 	startdialog::Recent *recentPage = new startdialog::Recent{this};
+#endif
 
 	EntryDefinition defs[Entry::Count];
 	defs[Entry::Welcome] = {
@@ -128,9 +154,11 @@ StartDialog::StartDialog(QWidget *parent)
 		createPage};
 	defs[Entry::Open] = {
 		"document-open", tr("Open File"), tr("Open an image file"), nullptr};
+#ifndef __EMSCRIPTEN__
 	defs[Entry::Recent] = {
 		"document-open-recent", tr("Recent Files"),
 		tr("Reopen a recently used file"), recentPage};
+#endif
 	defs[Entry::Layouts] = {
 		"window_", tr("Layouts"), tr("Choose application layout"), nullptr};
 	defs[Entry::Preferences] = {
@@ -145,7 +173,8 @@ StartDialog::StartDialog(QWidget *parent)
 		style()->pixelMetric(QStyle::PM_LayoutTopMargin, nullptr, this),
 		style()->pixelMetric(QStyle::PM_LayoutRightMargin, nullptr, this),
 		style()->pixelMetric(QStyle::PM_LayoutBottomMargin, nullptr, this));
-	mainLayout->addLayout(contentLayout, 1);
+	mainLayout->insertLayout(
+		menuFirst ? mainLayout->count() : 0, contentLayout, 1);
 
 	m_stack = new QStackedWidget;
 	m_stack->setContentsMargins(0, 0, 0, 0);
@@ -168,11 +197,13 @@ StartDialog::StartDialog(QWidget *parent)
 	m_addServerButton->hide();
 	buttonLayout->addWidget(m_addServerButton);
 
+#ifndef __EMSCRIPTEN__
 	m_checkForUpdatesButton = new QPushButton{
 		QIcon::fromTheme("update-none"), tr("Check for Updates")};
 	m_checkForUpdatesButton->setEnabled(false);
 	m_checkForUpdatesButton->hide();
 	buttonLayout->addWidget(m_checkForUpdatesButton);
+#endif
 
 	QDialogButtonBox *buttons = new QDialogButtonBox;
 	buttonLayout->addWidget(buttons);
@@ -190,8 +221,12 @@ StartDialog::StartDialog(QWidget *parent)
 		button->setIcon(QIcon::fromTheme(def.icon));
 		button->setText(def.title);
 		button->setToolTip(def.toolTip);
-		button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-		button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+		button->setSizePolicy(
+			vertical ? QSizePolicy::Expanding : QSizePolicy::Fixed,
+			vertical ? QSizePolicy::Fixed : QSizePolicy::Expanding);
+		button->setToolButtonStyle(
+			vertical ? Qt::ToolButtonTextBesideIcon
+					 : Qt::ToolButtonTextUnderIcon);
 		button->setAutoRaise(true);
 		button->setIconSize(QSize(iconSize, iconSize));
 		m_buttons[i] = button;
@@ -221,11 +256,12 @@ StartDialog::StartDialog(QWidget *parent)
 
 	m_linksSeparator = new QFrame;
 	m_linksSeparator->setForegroundRole(QPalette::Dark);
-	m_linksSeparator->setFrameShape(QFrame::VLine);
-	mainLayout->addWidget(m_linksSeparator);
+	m_linksSeparator->setFrameShape(vertical ? QFrame::VLine : QFrame::HLine);
+	mainLayout->insertWidget(
+		menuFirst ? mainLayout->count() : 0, m_linksSeparator);
 
-	m_links = new startdialog::Links;
-	mainLayout->addWidget(m_links);
+	m_links = new startdialog::Links(vertical);
+	mainLayout->insertWidget(menuFirst ? mainLayout->count() : 0, m_links);
 
 	connect(
 		m_addServerButton, &QAbstractButton::clicked, this,
@@ -233,9 +269,11 @@ StartDialog::StartDialog(QWidget *parent)
 	connect(
 		m_recordButton, &QAbstractButton::toggled, this,
 		&StartDialog::toggleRecording);
+#ifndef __EMSCRIPTEN__
 	connect(
 		m_checkForUpdatesButton, &QAbstractButton::clicked, this,
 		&StartDialog::checkForUpdates);
+#endif
 	connect(
 		m_okButton, &QAbstractButton::clicked, this, &StartDialog::okClicked);
 
@@ -307,20 +345,25 @@ StartDialog::StartDialog(QWidget *parent)
 	connect(
 		createPage, &startdialog::Create::create, this, &StartDialog::create);
 
+#ifndef __EMSCRIPTEN__
 	connect(
 		recentPage, &startdialog::Recent::openPath, this,
 		&StartDialog::openPath);
+#endif
 
 	setMinimumSize(600, 350);
 
 	const desktop::settings::Settings &settings = dpApp().settings();
 	QSize lastSize = settings.lastStartDialogSize();
-	resize(lastSize.isValid() ? lastSize : QSize{800, 450});
+	resize(lastSize.isValid() ? lastSize : QSize{820, 450});
 
 	connect(
 		m_stack, &QStackedWidget::currentChanged, this,
 		&StartDialog::rememberLastPage);
 
+#ifdef __EMSCRIPTEN__
+	welcomePage->showStandaloneText();
+#else
 	// Delay showing of the update notice to make it more noticeable. It'll jerk
 	// the whole UI if it comes in after a second, making it hard to miss.
 	m_initialUpdateDelayTimer->setTimerType(Qt::CoarseTimer);
@@ -348,6 +391,7 @@ StartDialog::StartDialog(QWidget *parent)
 	} else {
 		m_news.checkExisting();
 	}
+#endif
 }
 
 void StartDialog::setActions(const Actions &actions)
@@ -397,10 +441,12 @@ void StartDialog::autoJoin(const QUrl &url, const QString &autoRecordPath)
 	emit joinRequested(url);
 }
 
+#ifndef __EMSCRIPTEN__
 void StartDialog::checkForUpdates()
 {
 	m_news.forceCheck(CHECK_FOR_UPDATES_DELAY_MSEC);
 }
+#endif
 
 void StartDialog::resizeEvent(QResizeEvent *event)
 {
@@ -443,6 +489,7 @@ void StartDialog::toggleRecording(bool checked)
 	}
 }
 
+#ifndef __EMSCRIPTEN__
 void StartDialog::updateCheckForUpdatesButton(bool inProgress)
 {
 	QString text;
@@ -464,6 +511,7 @@ void StartDialog::updateCheckForUpdatesButton(bool inProgress)
 	m_checkForUpdatesButton->setDisabled(inProgress);
 	m_checkForUpdatesButton->setToolTip(text);
 }
+#endif
 
 void StartDialog::hideLinks()
 {
@@ -473,7 +521,9 @@ void StartDialog::hideLinks()
 
 void StartDialog::showWelcomeButtons()
 {
+#ifndef __EMSCRIPTEN__
 	m_checkForUpdatesButton->show();
+#endif
 	m_cancelButton->hide();
 	m_closeButton->show();
 }
@@ -518,9 +568,13 @@ void StartDialog::followLink(const QString &fragment)
 {
 	if(fragment.compare("autoupdate", Qt::CaseInsensitive) == 0) {
 		dpApp().settings().setUpdateCheckEnabled(true);
+#ifndef __EMSCRIPTEN__
 		m_checkForUpdatesButton->click();
+#endif
 	} else if(fragment.compare("checkupdates", Qt::CaseInsensitive) == 0) {
+#ifndef __EMSCRIPTEN__
 		m_checkForUpdatesButton->click();
+#endif
 	} else {
 		QMetaEnum entries = QMetaEnum::fromType<Entry>();
 		for(int i = 0; i < Entry::Count; ++i) {
@@ -572,6 +626,7 @@ void StartDialog::rememberLastPage(int i)
 	}
 }
 
+#ifndef __EMSCRIPTEN__
 void StartDialog::initialUpdateDelayFinished()
 {
 	m_initialUpdateDelayTimer->deleteLater();
@@ -588,6 +643,7 @@ void StartDialog::setUpdate(const utils::News::Update &update)
 		m_updateNotice->setUpdate(&m_update);
 	}
 }
+#endif
 
 void StartDialog::entryClicked(Entry entry)
 {
@@ -614,7 +670,9 @@ void StartDialog::entryToggled(startdialog::Page *page, bool checked)
 		m_links->show();
 		m_addServerButton->hide();
 		m_recordButton->hide();
+#ifndef __EMSCRIPTEN__
 		m_checkForUpdatesButton->hide();
+#endif
 		m_okButton->hide();
 		m_cancelButton->show();
 		m_closeButton->hide();

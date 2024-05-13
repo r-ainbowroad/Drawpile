@@ -88,9 +88,9 @@ public:
 
 	//! Enable/disable tablet event handling
 	void setTabletEnabled(bool enable) { m_enableTablet = enable; }
-	void setIgnoreZeroPressureInputs(bool ignore)
+	void setMouseSmoothing(bool mouseSmoothing)
 	{
-		m_ignoreZeroPressureInputs = ignore;
+		m_mouseSmoothing = mouseSmoothing;
 	}
 
 	//! Enable/disable touch gestures
@@ -140,7 +140,7 @@ signals:
 	void penDown(
 		long long timeMsec, const QPointF &point, qreal pressure, qreal xtilt,
 		qreal ytilt, qreal rotation, bool right, float zoom,
-		const QPointF &viewPos, bool eraserOverride);
+		const QPointF &viewPos, bool applyGlobalSmoothing, bool eraserOverride);
 	void penMove(
 		long long timeMsec, const QPointF &point, qreal pressure, qreal xtilt,
 		qreal ytilt, qreal rotation, bool shift, bool alt,
@@ -322,7 +322,7 @@ private:
 
 	void onPenDown(
 		const canvas::Point &p, bool right, const QPointF &viewPos,
-		bool eraserOverride);
+		bool isStylus, bool eraserOverride);
 	void onPenMove(
 		const canvas::Point &p, bool right, bool constrain1, bool constrain2,
 		const QPointF &viewPos);
@@ -414,7 +414,7 @@ private:
 	int m_zoomWheelDelta;
 
 	bool m_enableTablet;
-	bool m_ignoreZeroPressureInputs;
+	bool m_mouseSmoothing;
 	bool m_locked;
 	QString m_lockDescription;
 	bool m_busy;
