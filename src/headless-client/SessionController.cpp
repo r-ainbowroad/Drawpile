@@ -112,10 +112,14 @@ void SessionController::onSessionStart(int myUserId)
 	m_mqttTopicUpdates =
 		QMqttTopicName(QString("templates/") + m_settings.faction + "/updates");
 
-	QSslConfiguration sslConfig;
-	// TODO: Get a valid TLS cert for this
-	sslConfig.setPeerVerifyMode(QSslSocket::PeerVerifyMode::VerifyNone);
-	m_mqttClient->connectToHostEncrypted(sslConfig);
+	if(url.scheme().endsWith('s')) {
+		QSslConfiguration sslConfig;
+		// TODO: Get a valid TLS cert for this
+		sslConfig.setPeerVerifyMode(QSslSocket::PeerVerifyMode::VerifyNone);
+		m_mqttClient->connectToHostEncrypted(sslConfig);
+	} else {
+		m_mqttClient->connectToHost();
+	}
 	// TODO: Wait for mqtt to fully connect before processing commits
 
 	m_rcloneEnv = QStringList()
